@@ -140,7 +140,7 @@ describe("instanceFromConfig", () => {
   });
 
   it("exposes the release version", () => {
-    assert.equal(SERVER_VERSION, "3.2.0");
+    assert.equal(SERVER_VERSION, "3.3.0");
   });
 });
 
@@ -438,5 +438,29 @@ describe("MCP annotations on every tool", () => {
   it("a redirect error is a GlpiRedirectError for library callers", () => {
     const err = new GlpiRedirectError(302, "GET", "/x", "evil.example");
     assert.equal(err.message, "redirect not followed: 302 -> evil.example");
+  });
+});
+
+describe("serverInfo and instructions", () => {
+  it("sends the default identity and instructions, and lets a host override title, description, website and icons", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { instanceFromConfig, createGlpiServer, DEFAULT_INSTRUCTIONS, SERVER_VERSION } = await import("../src/lib.js");
+    const inst = instanceFromConfig({ id: "x", v1: { url: "https://glpi.example.com", userToken: "u" } });
+    for (const [opts, title] of [[{}, "NexTool MCP for GLPI"], [{ serverInfo: { title: "Host", description: "d", websiteUrl: "https://host.example", icons: [{ src: "https://host.example/i.png", mimeType: "image/png", sizes: ["180x180"] }] }, instructions: "hi" }, "Host"]] as const) {
+      const { server } = createGlpiServer(inst, opts as never);
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "t", version: "1" });
+      await Promise.all([server.connect(a), client.connect(b)]);
+      const info = client.getServerVersion()!;
+      assert.equal(info.title, title);
+      assert.equal(info.version, SERVER_VERSION, "version is never overridden");
+      assert.equal(client.getInstructions(), (opts as { instructions?: string }).instructions ?? DEFAULT_INSTRUCTIONS);
+      if (title === "Host") {
+        assert.equal(info.websiteUrl, "https://host.example");
+        assert.equal(info.icons?.[0].src, "https://host.example/i.png");
+      }
+      await client.close();
+    }
   });
 });

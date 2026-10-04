@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-10-04
+
+### Added
+- `createGlpiServer(instance, { serverInfo, instructions })`: a host can override the identity sent in `initialize` (title, description, websiteUrl, icons; `version` stays the package version) and the `instructions` for the model.
+- Default `instructions` (`DEFAULT_INSTRUCTIONS`, exported) describing what the tools cover and how to use them safely, and `websiteUrl` pointing at the public repository.
+
 ## [3.2.0] - 2026-10-04
 
 ### Added

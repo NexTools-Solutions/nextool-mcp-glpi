@@ -1,6 +1,6 @@
 {
   "name": "@nextoolsolutions/mcp-glpi",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "NexTool MCP for GLPI: connect AI assistants to GLPI through REST API v1 (110 tools) and GLPI 11 API v2 over OAuth2 (55 tools), with a write policy, MCP annotations, named toolsets, trimmed payloads, resources and prompts. Usable as a CLI (stdio/HTTP) or as a library. Not affiliated with Teclib'.",
   "type": "module",
   "main": "dist/lib.js",

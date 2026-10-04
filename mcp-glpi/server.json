@@ -3,7 +3,7 @@
   "name": "io.github.NexTools-Solutions/mcp-glpi",
   "title": "NexTool MCP for GLPI",
   "description": "Connect AI assistants to GLPI (REST API v1 and GLPI 11 API v2). Not affiliated with Teclib'.",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "repository": {
     "url": "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
     "source": "github",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@nextoolsolutions/mcp-glpi",
-      "version": "3.2.0",
+      "version": "3.3.0",
       "transport": {
         "type": "stdio"
       },

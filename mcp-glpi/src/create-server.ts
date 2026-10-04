@@ -7,6 +7,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Implementation } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   MIN_REASON_LENGTH,
@@ -25,7 +26,7 @@ import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 
-export const SERVER_VERSION = "3.2.0";
+export const SERVER_VERSION = "3.3.0";
 
 export interface CreatedServer {
   server: McpServer;
@@ -44,23 +45,45 @@ export interface CreateServerOptions {
    * Always called with `redirect: "manual"`; a 3xx becomes GlpiRedirectError.
    */
   fetchImpl?: FetchImpl;
+  /**
+   * Overrides of the identity sent in `initialize` (serverInfo): a host embedding this server can
+   * present its own title, description, website and icons. `version` stays the package version.
+   */
+  serverInfo?: Partial<Pick<Implementation, "name" | "title" | "description" | "websiteUrl" | "icons">>;
+  /** Text sent as `instructions` in `initialize` (guidance for the model). Default: DEFAULT_INSTRUCTIONS. */
+  instructions?: string;
 }
+
+/** Guidance for the model: what the tools cover and how to use them well. */
+export const DEFAULT_INSTRUCTIONS =
+  "Tools to work with a GLPI service desk (GLPI 10 and 11). glpi_* use the REST API v1, glpi_v2_* the GLPI 11 API v2. " +
+  "Typical flow: find tickets with glpi_list_tickets or glpi_search, open one with glpi_get_ticket, read its history with " +
+  "glpi_list_timeline (or followups/tasks/solutions), then act: add followups, tasks or solutions, update fields, assign users or groups. " +
+  "Also available, depending on the enabled presets: problems and changes, assets, knowledge base, users, groups, entities, documents, " +
+  "rules and webhooks. Every action runs with the GLPI permissions of the connected user. Tools are annotated: read-only tools never " +
+  "change data; confirm with the user before any write. Deletes are disabled unless the server allows them and then require a reason. " +
+  "Use IDs returned by list/search tools; do not guess them. Ask the user before changing many records at once.";
 
 export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOptions = {}): CreatedServer {
   const fetchImpl = opts.fetchImpl ?? instance.fetchImpl;
   const v1 = fetchImpl ? { ...instance.v1, fetchImpl } : instance.v1;
   const v2 = fetchImpl ? { ...instance.v2, fetchImpl } : instance.v2;
 
-  const server = new McpServer({
+  const server = new McpServer(
+    {
     name: "mcp-glpi",
     title: "NexTool MCP for GLPI",
-    version: SERVER_VERSION,
+    websiteUrl: "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
     description:
       "NexTool MCP server that connects AI assistants to GLPI — REST API v1 (glpi_*: tickets, changes, problems, unified timeline, " +
       "validations, assets and reservations, webhooks, users, groups, entities, documents, " +
       "knowledge base, rules and search) and GLPI 11 API v2 (glpi_v2_*), each enabled by its own " +
       "credentials. Read tools return trimmed payloads; writes and deletes are gated by policy.",
-  });
+    ...opts.serverInfo,
+    version: SERVER_VERSION,
+    },
+    { instructions: opts.instructions ?? DEFAULT_INSTRUCTIONS },
+  );
 
   // Write policy — annotations + read-only / delete gating for every tool below.
   // Must run before the first registerTool call.

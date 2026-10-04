@@ -16,7 +16,7 @@
  *   await server.connect(transport);
  */
 
-export { createGlpiServer, SERVER_VERSION } from "./create-server.js";
+export { createGlpiServer, DEFAULT_INSTRUCTIONS, SERVER_VERSION } from "./create-server.js";
 export type { CreateServerOptions, CreatedServer } from "./create-server.js";
 export { instanceFromConfig, instanceFromEnv } from "./instance.js";
 export type {
