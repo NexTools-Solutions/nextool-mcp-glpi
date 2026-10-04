@@ -1,0 +1,51 @@
+{
+  "name": "@nextoolsolutions/mcp-glpi-core",
+  "version": "1.1.0",
+  "description": "Shared infrastructure for the GLPI MCP servers: HTTP transport with retry, typed errors, tool-result helpers, write policy, payload formatting and idempotency.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "keywords": [
+    "mcp",
+    "glpi",
+    "itsm"
+  ],
+  "author": "NexTool Solutions",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NexTools-Solutions/nextool-mcp-glpi.git",
+    "directory": "mcp-glpi-core"
+  },
+  "homepage": "https://github.com/NexTools-Solutions/nextool-mcp-glpi/tree/main/mcp-glpi-core#readme",
+  "bugs": {
+    "url": "https://github.com/NexTools-Solutions/nextool-mcp-glpi/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

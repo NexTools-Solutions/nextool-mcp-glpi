@@ -1,0 +1,42 @@
+# Tag v<version> -> tests -> npm (with provenance) -> official MCP Registry.
+#   npm: repository secret NPM_TOKEN (granular automation token for the @nextoolsolutions scope)
+#   MCP Registry: GitHub OIDC (namespace io.github.NexTools-Solutions), no secret needed
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: test core
+        working-directory: mcp-glpi-core
+        run: npm ci && npm run build && npm test
+      - name: test server
+        working-directory: mcp-glpi
+        run: npm ci && npm run build && npm test
+      - name: tag matches server version
+        run: test "v$(node -p "require('./mcp-glpi/package.json').version")" = "$GITHUB_REF_NAME"
+      - name: publish to npm (skips versions already published)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for d in mcp-glpi-core mcp-glpi; do
+            name=$(node -p "require('./$d/package.json').name"); ver=$(node -p "require('./$d/package.json').version")
+            if npm view "$name@$ver" version >/dev/null 2>&1; then echo "$name@$ver already published"; continue; fi
+            (cd "$d" && npm publish --provenance --access public)
+          done
+      - name: publish to the MCP Registry
+        working-directory: mcp-glpi
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

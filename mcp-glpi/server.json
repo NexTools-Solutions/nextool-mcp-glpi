@@ -1,0 +1,159 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.NexTools-Solutions/mcp-glpi",
+  "title": "NexTool MCP for GLPI",
+  "description": "Connect AI assistants to GLPI (REST API v1 and GLPI 11 API v2). Not affiliated with Teclib'.",
+  "version": "3.2.0",
+  "repository": {
+    "url": "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
+    "source": "github",
+    "subfolder": "mcp-glpi"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@nextoolsolutions/mcp-glpi",
+      "version": "3.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "npx",
+      "environmentVariables": [
+        {
+          "name": "GLPI_URL",
+          "description": "GLPI instance URL for the API v1 tools (apirest.php or api.php/v1)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_USER_TOKEN",
+          "description": "GLPI API User Token (API v1 tools)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GLPI_APP_TOKEN",
+          "description": "GLPI API Application Token",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GLPI_V2_URL",
+          "description": "GLPI 11 URL for the API v2 tools (glpi_v2_*)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_V2_CLIENT_ID",
+          "description": "OAuth2 client ID (API v2)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_V2_CLIENT_SECRET",
+          "description": "OAuth2 client secret (API v2)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GLPI_V2_USERNAME",
+          "description": "GLPI user for the OAuth2 password grant (API v2)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_V2_PASSWORD",
+          "description": "Password of that user (API v2)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GLPI_V2_SCOPE",
+          "description": "OAuth2 scope (default api)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_V2_API_VERSION",
+          "description": "API version path, e.g. v2.2 (default v2)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_TOOLSETS",
+          "description": "Named tool presets, comma-separated: core, tickets, itil, assets, kb, documents, users, search, admin, v2",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_TOOLS_INCLUDE",
+          "description": "Comma-separated globs: register matching tools (adds to GLPI_TOOLSETS; with neither set, every tool registers)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_TOOLS_EXCLUDE",
+          "description": "Comma-separated globs: drop matching tools",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_READ_ONLY",
+          "description": "Block every write and destructive tool (default false)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_ALLOW_DELETE",
+          "description": "Enable destructive tools (default false)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_REQUIRE_DELETE_REASON",
+          "description": "Require a reason on destructive tools (default true)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_DEFAULT_PAGE_SIZE",
+          "description": "Items returned when no range is given (default 25)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_MAX_PAGE_SIZE",
+          "description": "Hard ceiling of items per call (default 200)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_IDEMPOTENCY_WINDOW",
+          "description": "Seconds an identical create is replayed instead of repeated (default 120, 0 disables)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_RESOURCE_CACHE_TTL",
+          "description": "Resource cache TTL in ms (default 300000)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_MAX_RETRIES",
+          "description": "Max retry attempts on 429/5xx (default 3)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GLPI_TIMEOUT",
+          "description": "Request timeout in ms (default 30000)",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ],
+  "websiteUrl": "https://nextoolsolutions.com"
+}
