@@ -11,6 +11,8 @@ import {
 } from "../src/format.js";
 import {
   DEFAULT_PAGE_SIZE,
+  LIST_TEXT_MAX_CHARS,
+  MAX_RESPONSE_CHARS,
   MAX_PAGE_SIZE,
   paginationNote,
   resolveLimit,
@@ -94,6 +96,18 @@ describe("pickFields", () => {
     assert.ok("takeintoaccountdate" in out);
   });
 
+  it("keeps resolved names and search columns through a whitelist", () => {
+    const out = pickFields("TicketTask", { id: 1, users_id: 7, user_name: "John Doe", bogus: 1 }, "essential");
+    assert.deepEqual(out, { id: 1, users_id: 7, user_name: "John Doe" });
+    const row = pickFields("Ticket", { "1": "Printer down", "2": 7, "12": 1, junk: 0 }, "essential");
+    assert.deepEqual(row, { "1": "Printer down", "2": 7, "12": 1 });
+  });
+
+  it("drops API v2 statistics in the generic blocklist", () => {
+    const out = pickFields(undefined, { id: 1, resolution_duration: 0, internal_resolution_date: null, date: "x" }, "essential");
+    assert.deepEqual(out, { id: 1, date: "x" });
+  });
+
   it("never lists a whitelist without an id", () => {
     for (const [itemtype, fields] of Object.entries(ESSENTIAL_FIELDS)) {
       assert.ok(fields.includes("id"), `${itemtype} whitelist must include id`);
@@ -135,6 +149,26 @@ describe("markdown rendering", () => {
 
   it("renders a single object as key/value lines", () => {
     assert.equal(renderMarkdown({ id: 1, name: "a" }), "**id**: 1\n**name**: a");
+  });
+
+  it("never cuts a single item's long text", () => {
+    const long = "x".repeat(500);
+    assert.ok(renderMarkdown({ content: long }).includes(long));
+    assert.equal(renderMarkdown({ content: "one\ntwo" }), "**content**:\n  one\n  two");
+  });
+
+  it("renders {id, name} references as words, not JSON", () => {
+    const md = toMarkdownTable([
+      {
+        status: { id: 2, name: "Processing" },
+        team: [
+          { role: "requester", id: 7, name: "jdoe", display_name: "John Doe (7)" },
+          { role: "assigned", id: 9, name: "ann" },
+        ],
+      },
+    ]);
+    assert.match(md, /Processing \(2\)/);
+    assert.match(md, /requester: John Doe \(7\), assigned: ann \(9\)/);
   });
 });
 
@@ -207,7 +241,7 @@ function jsonToolResult(data: unknown) {
 
 describe("inferItemtype", () => {
   it("prefers an explicit argument over the name map", () => {
-    assert.equal(inferItemtype("glpi_search", { itemtype: "Computer" }), "Computer");
+    assert.equal(inferItemtype("glpi_get_asset", { asset_type: "Computer" }), "Computer");
     assert.equal(inferItemtype("glpi_list_tickets", {}), "Ticket");
     assert.equal(inferItemtype("glpi_get_unknown_thing", {}), undefined);
   });
@@ -277,7 +311,7 @@ describe("installPayloadFormatting", () => {
     assert.equal(r.structuredContent.data.content, "<p>x</p>");
   });
 
-  it("renders markdown text but keeps structuredContent parseable", async () => {
+  it("carries markdown in the text AND in structuredContent (clients read the latter)", async () => {
     const server = new FakeServer();
     installPayloadFormatting(server, FORMAT_OPTS);
     server.registerTool("glpi_list_tickets", { inputSchema: fakeZodObject({ range: {} }) }, async () =>
@@ -285,10 +319,74 @@ describe("installPayloadFormatting", () => {
     );
     const r = (await server.tools.get("glpi_list_tickets")!.handler({ format: "markdown" })) as {
       content: { text: string }[];
-      structuredContent: { data: unknown };
+      structuredContent: { data: unknown; format: string; count: number };
     };
     assert.match(r.content[0].text, /^\| id \| name \|/);
-    assert.deepEqual(r.structuredContent.data, [{ id: 1, name: "a" }]);
+    assert.equal(r.structuredContent.format, "markdown");
+    assert.equal(r.structuredContent.data, r.content[0].text);
+    assert.equal(r.structuredContent.count, 1);
+  });
+
+  it("keeps sibling keys of data (e.g. total) in JSON and in the markdown rendering", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    server.registerTool("glpi_list_tickets", { inputSchema: fakeZodObject({ range: {} }) }, async () => ({
+      content: [{ type: "text", text: "" }],
+      structuredContent: { data: [{ id: 1 }], total: 42 },
+    }));
+    const json = (await server.tools.get("glpi_list_tickets")!.handler({})) as { structuredContent: Record<string, unknown> };
+    assert.equal(json.structuredContent.total, 42);
+    const md = (await server.tools.get("glpi_list_tickets")!.handler({ format: "markdown" })) as { content: { text: string }[] };
+    assert.match(md.content[0].text, /\*\*total\*\*: 42/);
+  });
+
+  it("formats results that are not wrapped in data (API v2 single items)", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    const item = { id: 9, name: "VPN", content: "<p>x</p>", links: [], resolution_duration: 3, status: { id: 1, name: "New" } };
+    server.registerTool("glpi_v2_get_ticket", { inputSchema: fakeZodObject({ ticketId: {} }) }, async () => ({
+      content: [{ type: "text", text: JSON.stringify(item) }],
+      structuredContent: item,
+    }));
+    const handler = server.tools.get("glpi_v2_get_ticket")!.handler;
+    const json = (await handler({})) as { structuredContent: Record<string, unknown> };
+    assert.deepEqual(json.structuredContent, { id: 9, name: "VPN", content: "x", status: { id: 1, name: "New" } });
+    const md = (await handler({ format: "markdown" })) as {
+      content: { text: string }[];
+      structuredContent: Record<string, unknown>;
+    };
+    assert.match(md.content[0].text, /^\*\*id\*\*: 9/m);
+    assert.match(md.content[0].text, /\*\*status\*\*: New \(1\)/);
+    assert.equal(md.structuredContent.format, "markdown");
+    const all = (await handler({ fields: "all" })) as { structuredContent: Record<string, unknown> };
+    assert.ok("links" in all.structuredContent);
+  });
+
+  it("never whitelists glpi_search rows (they are keyed by search option, not field)", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    server.registerTool("glpi_search", { inputSchema: fakeZodObject({ itemtype: {}, range: {} }) }, async () => ({
+      content: [{ type: "text", text: "" }],
+      structuredContent: { data: [{ "1": "Printer down", "2": 7, Status: 1 }], total: 1 },
+    }));
+    const r = (await server.tools.get("glpi_search")!.handler({ itemtype: "Ticket" })) as {
+      structuredContent: { data: Record<string, unknown>[]; total: number };
+    };
+    assert.deepEqual(r.structuredContent.data, [{ "1": "Printer down", "2": 7, Status: 1 }]);
+    assert.equal(r.structuredContent.total, 1);
+  });
+
+  it("does not apply a v1 whitelist to API v2 tools", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    server.registerTool("glpi_v2_list_tickets", { inputSchema: fakeZodObject({ limit: {} }) }, async () =>
+      jsonToolResult([{ id: 1, entity: { id: 0, name: "Root" }, team: [{ role: "requester", id: 7, name: "jdoe" }] }]),
+    );
+    const r = (await server.tools.get("glpi_v2_list_tickets")!.handler({})) as {
+      structuredContent: { data: Record<string, unknown>[] };
+    };
+    assert.ok("entity" in r.structuredContent.data[0]);
+    assert.ok("team" in r.structuredContent.data[0]);
   });
 
   it("leaves error results untouched", async () => {
@@ -305,14 +403,77 @@ describe("installPayloadFormatting", () => {
   it("uses the itemtype argument when the tool is generic", async () => {
     const server = new FakeServer();
     installPayloadFormatting(server, FORMAT_OPTS);
-    server.registerTool("glpi_search", { inputSchema: fakeZodObject({ itemtype: {}, range: {} }) }, async () =>
+    server.registerTool("glpi_list_assets", { inputSchema: fakeZodObject({ asset_type: {}, range: {} }) }, async () =>
       jsonToolResult([{ id: 1, name: "pc-01", serial: "X", links: [], comment: "c", bogus: 1 }]),
     );
-    const r = (await server.tools.get("glpi_search")!.handler({ itemtype: "Computer" })) as {
+    const r = (await server.tools.get("glpi_list_assets")!.handler({ asset_type: "Computer" })) as {
       structuredContent: { data: Record<string, unknown>[] };
     };
     assert.ok(!("bogus" in r.structuredContent.data[0]), "Computer whitelist should apply");
     assert.ok("serial" in r.structuredContent.data[0]);
+  });
+});
+
+describe("size budget and pagination notes", () => {
+  const bigRow = (i: number) => ({ id: i, name: `t${i}`, content: "x".repeat(280), comment: "y".repeat(280), solution: "s".repeat(280) });
+
+  it("cuts long texts in listings, not in history listings or with fields=all", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    const rows = [{ id: 1, content: "z".repeat(LIST_TEXT_MAX_CHARS + 50) }];
+    for (const n of ["glpi_list_tickets", "glpi_list_timeline"]) {
+      server.registerTool(n, { inputSchema: fakeZodObject({ range: {} }) }, async () => jsonToolResult(rows));
+    }
+    const list = (await server.tools.get("glpi_list_tickets")!.handler({})) as { structuredContent: { data: { content: string }[]; note: string } };
+    assert.equal(list.structuredContent.data[0].content.length, LIST_TEXT_MAX_CHARS);
+    assert.match(list.structuredContent.note, /fields=all/);
+    const all = (await server.tools.get("glpi_list_tickets")!.handler({ fields: "all" })) as { structuredContent: { data: { content: string }[] } };
+    assert.equal(all.structuredContent.data[0].content.length, LIST_TEXT_MAX_CHARS + 50);
+    const tl = (await server.tools.get("glpi_list_timeline")!.handler({})) as { structuredContent: { data: { content: string }[] } };
+    assert.equal(tl.structuredContent.data[0].content.length, LIST_TEXT_MAX_CHARS + 50);
+  });
+
+  it("trims a listing to the character budget and names the next range", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    const rows = Array.from({ length: MAX_PAGE_SIZE }, (_, i) => bigRow(i));
+    server.registerTool("glpi_list_document_items", { inputSchema: fakeZodObject({ range: {} }) }, async () => jsonToolResult(rows));
+    for (const format of ["json", "markdown"]) {
+      const r = (await server.tools.get("glpi_list_document_items")!.handler({ range: `0-${MAX_PAGE_SIZE - 1}`, format })) as {
+        content: { text: string }[];
+        structuredContent: { count: number; note: string };
+      };
+      assert.ok(r.content[0].text.length <= MAX_RESPONSE_CHARS, `${format}: ${r.content[0].text.length}`);
+      if (format === "markdown") continue; // table cells are short: the same page fits as markdown
+      const n = r.structuredContent.count;
+      assert.ok(n > 0 && n < MAX_PAGE_SIZE, `${format}: ${n}`);
+      assert.match(r.structuredContent.note, new RegExp(`returned ${n} of the ${MAX_PAGE_SIZE} items`));
+      assert.match(r.structuredContent.note, new RegExp(`range=${n}-${2 * n - 1}`));
+      assert.doesNotMatch(r.structuredContent.note, /start/);
+    }
+  });
+
+  it("names start/limit only when the tool has them", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    const rows = Array.from({ length: DEFAULT_PAGE_SIZE }, (_, i) => ({ id: i }));
+    server.registerTool("glpi_v2_list_tickets", { inputSchema: fakeZodObject({ limit: {}, start: {} }) }, async () => jsonToolResult(rows));
+    server.registerTool("glpi_v2_list_things", { inputSchema: fakeZodObject({ limit: {} }) }, async () => jsonToolResult(rows));
+    const a = (await server.tools.get("glpi_v2_list_tickets")!.handler({ start: 50 })) as { structuredContent: { note: string } };
+    assert.match(a.structuredContent.note, new RegExp(`start=${50 + DEFAULT_PAGE_SIZE} limit=${DEFAULT_PAGE_SIZE}`));
+    const b = (await server.tools.get("glpi_v2_list_things")!.handler({})) as { structuredContent: { note: string } };
+    assert.doesNotMatch(b.structuredContent.note, /start|range/);
+  });
+
+  it("uses the total to decide whether a next page exists", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, FORMAT_OPTS);
+    server.registerTool("glpi_list_tickets", { inputSchema: fakeZodObject({ range: {} }) }, async () => ({
+      content: [{ type: "text", text: "" }],
+      structuredContent: { data: [{ id: 1 }, { id: 2 }], total: 2 },
+    }));
+    const r = (await server.tools.get("glpi_list_tickets")!.handler({ range: "0-1" })) as { structuredContent: { note?: string } };
+    assert.equal(r.structuredContent.note, undefined);
   });
 });
 
@@ -321,7 +482,6 @@ describe("inferItemtype scoping (regression)", () => {
     // glpi_list_timeline takes itemtype "Ticket" but returns followups, tasks
     // and validations; applying the Ticket whitelist stripped them.
     assert.equal(inferItemtype("glpi_list_timeline", { itemtype: "Ticket" }), undefined);
-    assert.equal(inferItemtype("glpi_search", { itemtype: "Computer" }), "Computer");
     assert.equal(inferItemtype("glpi_list_assets", { asset_type: "Monitor" }), "Monitor");
     assert.equal(inferItemtype("glpi_list_tickets", { itemtype: "Nonsense" }), "Ticket");
   });

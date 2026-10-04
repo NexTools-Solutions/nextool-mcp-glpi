@@ -13,9 +13,9 @@ both carried.
 | `result.ts` | `toolResult` / `jsonResult` / `errorResult` / `makeWrap` |
 | `policy.ts` | Write policy: read-only mode, delete gating, tool classification by name |
 | `server-policy.ts` | Installs the policy and MCP annotations (title, read-only, destructive, idempotent, closed world) by wrapping `registerTool` |
-| `format.ts` | HTML stripping, per-itemtype field whitelists, markdown rendering |
-| `pagination.ts` | Range/limit defaults and ceiling |
-| `server-format.ts` | Installs payload formatting and pagination on read tools |
+| `format.ts` | HTML stripping, per-itemtype field whitelists (API v1), markdown rendering |
+| `pagination.ts` | Range/limit defaults and ceiling, size budget constants, next-page notes |
+| `server-format.ts` | Installs payload formatting, pagination and the size budget on read tools; markdown goes in the text and in `structuredContent` |
 | `idempotency.ts` | Create idempotency key and store |
 | `server-idempotency.ts` | Installs the create guard, including in-flight collapsing |
 
@@ -34,9 +34,19 @@ They compose in any order.
   (`redirect not followed: <status> -> <host>`); the Location path and query never reach the
   message. Clients treat it as final (no retry).
 
+## Read tool output (1.2.0)
+
+- `format: "markdown"` is returned in the text block and in `structuredContent`
+  (`{ data: "<markdown>", format: "markdown", count, note }`), for wrapped (`{ data }`) and
+  unwrapped (API v2 item) payloads alike.
+- Listings: at most `GLPI_MAX_PAGE_SIZE` (100) items, texts cut at `GLPI_LIST_TEXT_MAX_CHARS`
+  (300) except in `FULL_TEXT_LISTS`, answer trimmed to `GLPI_MAX_RESPONSE_CHARS` (50000). The
+  `note` names only the tool's own pagination parameters.
+- `errorResult` carries no `structuredContent`, so validating clients show the error message.
+
 ## Consuming it
 
-`@nextoolsolutions/mcp-glpi` declares it as `^1.1.0`. Inside the repo its lockfile links the
+`@nextoolsolutions/mcp-glpi` declares it as `^1.2.0`. Inside the repo its lockfile links the
 sibling folder, so build here first — `tsx` does not transpile TypeScript inside
 `node_modules`, the server loads the compiled `dist/`:
 

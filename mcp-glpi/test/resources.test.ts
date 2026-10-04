@@ -35,7 +35,9 @@ describe("resources", () => {
     assert.equal(maps.ticket_status["5"], "Solved");
     assert.equal(maps.ticket_type["1"], "Incident");
     assert.equal(maps.actor_type["2"], "Assigned");
-    assert.equal(maps.validation_status["3"], "Refused");
+    // CommonITILValidation: NONE=1, WAITING=2, ACCEPTED=3, REFUSED=4. A live approved
+    // validation ("Aprovado via telegram", GLPI 11.0.7) has status 3; the old map called it Refused.
+    assert.deepEqual(maps.validation_status, { 1: "None", 2: "Waiting", 3: "Accepted", 4: "Refused" });
     // urgency and impact share the priority scale in GLPI.
     assert.deepEqual(maps.urgency, PRIORITY_MAP);
     assert.deepEqual(maps.impact, PRIORITY_MAP);

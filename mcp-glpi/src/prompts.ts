@@ -107,9 +107,9 @@ Read only. Do not create the Problem yourself.`;
 Steps:
 1. Resolve the user: glpi_search_user_by_email if it looks like an email, otherwise
    glpi_search on User by name.
-2. glpi_search on Ticket filtered by that requester. Use glpi_list_search_options
-   to find the requester field id.
-3. Read glpi://code-maps to interpret the status codes.
+2. glpi_list_my_tickets with users_id = that user and role "requester": status "open" for
+   what is open now, then status ["solved", "closed"] for the recent history.
+3. glpi_list_timeline (order "desc") on the tickets that need a closer look.
 
 Then report:
 - What is open right now, oldest first, with status and age.
@@ -141,10 +141,26 @@ Then report:
   ];
 }
 
-/** Registers every prompt on the server. */
-export function registerPrompts(server: object, definitions: PromptDefinition[]): void {
+/** Tool names a prompt tells the model to call (glpi_*), read from its text with placeholder args. */
+export function toolsCitedBy(def: PromptDefinition): string[] {
+  const sample = Object.fromEntries(Object.keys(def.argsShape).map((k) => [k, "x"]));
+  const text = `${def.description}\n${def.build(sample)}`;
+  return [...new Set(text.match(/\bglpi_[a-z0-9_]+/g) ?? [])];
+}
+
+/**
+ * Registers the prompts. With `isAvailable`, a prompt that names a tool the
+ * server did not register (filtered out by a preset) is skipped: it would
+ * send the model after a tool that does not exist in this session.
+ */
+export function registerPrompts(
+  server: object,
+  definitions: PromptDefinition[],
+  isAvailable?: (toolName: string) => boolean,
+): void {
   const target = server as PromptCapableServer;
   for (const def of definitions) {
+    if (isAvailable && !toolsCitedBy(def).every(isAvailable)) continue;
     target.registerPrompt(
       def.name,
       { title: def.title, description: def.description, argsSchema: def.argsShape },

@@ -81,6 +81,11 @@ function sessionKey(config: GlpiConfig): string {
   return credentialKey("v1", trimSlash(config.baseUrl), config.userToken, config.appToken);
 }
 
+/** Cache key of one v1 credential: per-user caches (names, session user) must never be shared. */
+export function v1CredentialKey(config: GlpiConfig): string {
+  return sessionKey(config);
+}
+
 async function initSession(config: GlpiConfig): Promise<string> {
   const baseUrl = trimSlash(config.baseUrl);
   const isV1 = isV1Api(config);
@@ -199,14 +204,62 @@ export async function glpiRequest<T = unknown>(
 // Ticket
 // ---------------------------------------------------------------------------
 
-/** List tickets. range e.g. "0-49" */
-export async function listTickets(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean }) {
-  return glpiRequest<unknown[]>(config, "GET", withQs("/Ticket/", { range: params?.range, expand_dropdowns: params?.expand_dropdowns }));
+/** Sort parameters of getAllItems: a column of the itemtype's table and a direction. */
+export interface SortParams {
+  sort?: string;
+  order?: "ASC" | "DESC";
+}
+
+/** List tickets. range e.g. "0-49"; sort is a column name (date_mod, date, id, priority...). */
+export async function listTickets(
+  config: GlpiConfig,
+  params?: { range?: string; expand_dropdowns?: boolean } & SortParams,
+) {
+  return glpiRequest<unknown[]>(
+    config,
+    "GET",
+    withQs("/Ticket/", {
+      range: params?.range,
+      expand_dropdowns: params?.expand_dropdowns,
+      sort: params?.sort,
+      order: params?.order,
+    }),
+  );
 }
 
 /** Get a ticket by ID */
-export async function getTicket(config: GlpiConfig, ticketId: number | string) {
-  return glpiRequest<Record<string, unknown>>(config, "GET", `/Ticket/${id(ticketId)}`);
+export async function getTicket(config: GlpiConfig, ticketId: number | string, params?: { expand_dropdowns?: boolean }) {
+  return glpiRequest<Record<string, unknown>>(
+    config,
+    "GET",
+    withQs(`/Ticket/${id(ticketId)}`, { expand_dropdowns: params?.expand_dropdowns }),
+  );
+}
+
+/**
+ * Several items of one itemtype in one request (GET /getMultipleItems), in the
+ * order of `ids`. Used after a search to return full items instead of search
+ * columns.
+ */
+export async function getMultipleItems(
+  config: GlpiConfig,
+  itemtype: string,
+  ids: (number | string)[],
+  params?: { expand_dropdowns?: boolean },
+): Promise<Record<string, unknown>[]> {
+  if (ids.length === 0) return [];
+  const q = new URLSearchParams();
+  ids.forEach((itemId, i) => {
+    q.set(`items[${i}][itemtype]`, itemtype);
+    q.set(`items[${i}][items_id]`, String(itemId));
+  });
+  if (params?.expand_dropdowns) q.set("expand_dropdowns", "true");
+  const res = await glpiRequest<unknown>(config, "GET", `/getMultipleItems?${q.toString()}`);
+  const rows = (Array.isArray(res) ? res : []).filter(
+    (r): r is Record<string, unknown> => typeof r === "object" && r !== null && !Array.isArray(r),
+  );
+  const byId = new Map(rows.map((r) => [String(r.id), r]));
+  return ids.map((i) => byId.get(String(i))).filter((r): r is Record<string, unknown> => r !== undefined);
 }
 
 /** Create a ticket. input: { name, content, entities_id, _users_id_requester, ... } */
@@ -227,27 +280,83 @@ export async function updateTicket(config: GlpiConfig, ticketId: number | string
 // Search
 // ---------------------------------------------------------------------------
 
-/** Search with criteria. itemtype: Ticket, User, etc. */
+/**
+ * Encodes search criteria as GLPI expects them in the query string, nested
+ * groups included: {link: "AND", criteria: [{field: 4, ...}, {link: "OR", ...}]}
+ * becomes criteria[i][criteria][j][field]=4 ... (before 3.4.0 a nested group
+ * was sent as "[object Object]" and silently matched nothing).
+ */
+export function appendCriteria(q: URLSearchParams, prefix: string, criteria: Record<string, unknown>[]): void {
+  criteria.forEach((c, i) => {
+    for (const [k, v] of Object.entries(c)) {
+      // An undefined entry (a `link` omitted on the first criterion) must be
+      // dropped, not stringified — GLPI rejects "link=undefined".
+      if (v === undefined || v === null) continue;
+      if (k === "criteria" && Array.isArray(v)) {
+        appendCriteria(q, `${prefix}[${i}][criteria]`, v as Record<string, unknown>[]);
+      } else {
+        q.set(`${prefix}[${i}][${k}]`, typeof v === "object" ? JSON.stringify(v) : String(v));
+      }
+    }
+  });
+}
+
+/** Raw answer of GET /search/:itemtype. */
+export interface SearchResponse {
+  totalcount?: number;
+  count?: number;
+  data?: Record<string, unknown>[];
+  [k: string]: unknown;
+}
+
+/** Search with criteria. itemtype: Ticket, User, etc. sort = search option ID. */
 export async function search(
   config: GlpiConfig,
   itemtype: string,
-  params?: { range?: string; criteria?: Record<string, unknown>[]; forcedisplay?: number[] },
-) {
+  params?: {
+    range?: string;
+    criteria?: Record<string, unknown>[];
+    forcedisplay?: number[];
+    sort?: number;
+    order?: "ASC" | "DESC";
+  },
+): Promise<SearchResponse | undefined> {
   const q = new URLSearchParams();
   if (params?.range) q.set("range", params.range);
-  if (params?.criteria?.length) {
-    params.criteria.forEach((c, i) => {
-      Object.entries(c).forEach(([k, v]) => {
-        // An undefined entry (a `link` omitted on the first criterion) must be
-        // dropped, not stringified — GLPI rejects "link=undefined".
-        if (v === undefined || v === null) return;
-        q.set(`criteria[${i}][${k}]`, String(v));
-      });
-    });
-  }
+  if (params?.criteria?.length) appendCriteria(q, "criteria", params.criteria);
   if (params?.forcedisplay?.length) params.forcedisplay.forEach((f, i) => q.set(`forcedisplay[${i}]`, String(f)));
+  if (params?.sort !== undefined) q.set("sort", String(params.sort));
+  if (params?.order) q.set("order", params.order);
   const query = q.toString();
-  return glpiRequest<unknown>(config, "GET", `/search/${encodeURIComponent(itemtype)}` + (query ? `?${query}` : ""));
+  return glpiRequest<SearchResponse>(config, "GET", `/search/${encodeURIComponent(itemtype)}` + (query ? `?${query}` : ""));
+}
+
+/**
+ * Runs a search for the IDs (search option 2) in the requested order, then
+ * fetches the full items with getMultipleItems — the result has the same shape
+ * as a getAllItems listing, plus the search total.
+ */
+export async function searchItems(
+  config: GlpiConfig,
+  itemtype: string,
+  params: {
+    criteria?: Record<string, unknown>[];
+    range?: string;
+    sort?: number;
+    order?: "ASC" | "DESC";
+    expand_dropdowns?: boolean;
+  },
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  const res = await search(config, itemtype, {
+    range: params.range,
+    criteria: params.criteria,
+    forcedisplay: [2],
+    sort: params.sort,
+    order: params.order,
+  });
+  const ids = (res?.data ?? []).map((r) => r["2"]).filter((v) => v !== undefined && v !== null) as (number | string)[];
+  const rows = await getMultipleItems(config, itemtype, ids, { expand_dropdowns: params.expand_dropdowns });
+  return { rows, total: typeof res?.totalcount === "number" ? res.totalcount : rows.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -288,10 +397,17 @@ export interface TimelineEntry {
   [k: string]: unknown;
 }
 
+/** Rows fetched per timeline part: a busy ticket has dozens of entries, not thousands. */
+const TIMELINE_PART_RANGE = "0-999";
+
 /**
  * Followups, tasks, solutions and validations of an ITIL item merged into one
  * chronological list — the v2 server has this, v1 forced four separate calls
  * and manual interleaving.
+ *
+ * Each part is fetched whole and `range` applies to the MERGED list: paging
+ * each part separately (before 3.4.0) mixed time windows, so page 2 could hold
+ * entries older than page 1. `order` "desc" puts the latest entry first.
  *
  * A sub-resource that the instance does not expose (validations exist only on
  * Ticket) is skipped rather than failing the whole timeline.
@@ -300,16 +416,14 @@ export async function listTimeline(
   config: GlpiConfig,
   itemtype: ITILItemtype,
   itemId: number | string,
-  params?: { range?: string },
+  params?: { range?: string; order?: "asc" | "desc" },
 ): Promise<TimelineEntry[]> {
-  const range = params?.range;
-
   async function fetchPart(sub: string): Promise<Record<string, unknown>[]> {
     try {
       const r = await glpiRequest<unknown>(
         config,
         "GET",
-        withQs(`/${id(itemtype)}/${id(itemId)}/${sub}`, { range }),
+        withQs(`/${id(itemtype)}/${id(itemId)}/${sub}`, { range: TIMELINE_PART_RANGE }),
       );
       return Array.isArray(r) ? (r as Record<string, unknown>[]) : [];
     } catch {
@@ -331,12 +445,16 @@ export async function listTimeline(
     ...validations.map((e) => ({ ...e, type: "validation" as const, date: dateOf(e) })),
   ];
 
-  // Oldest first, undated entries last.
-  return entries.sort((a, b) => {
+  // Chronological, undated entries last (in both orders).
+  const desc = params?.order === "desc";
+  entries.sort((a, b) => {
     if (!a.date) return 1;
     if (!b.date) return -1;
-    return a.date.localeCompare(b.date);
+    return desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
   });
+
+  const m = /^(\d+)\s*-\s*(\d+)$/.exec(params?.range ?? "");
+  return m ? entries.slice(Number(m[1]), Number(m[2]) + 1) : entries;
 }
 
 function dateOf(entry: Record<string, unknown>): string | null {
@@ -399,14 +517,14 @@ export async function getUser(config: GlpiConfig, userId: number | string) {
   return glpiRequest<Record<string, unknown>>(config, "GET", `/User/${id(userId)}`);
 }
 
-/** Search user by email (search User with criteria field 5 = email) */
+/**
+ * Search users by email (User search option 5 = email, anchored). Returns full
+ * User items (login, real name, first name...), not search columns.
+ */
 export async function searchUserByEmail(config: GlpiConfig, email: string, params?: { range?: string }) {
-  const criteria = [{ field: "5", searchtype: "contains", value: `^${email}$` }];
-  return search(config, "User", {
-    range: params?.range ?? "0-1",
-    criteria: criteria as unknown as Record<string, unknown>[],
-    forcedisplay: [2],
-  });
+  const criteria = [{ field: 5, searchtype: "contains", value: `^${email}$` }];
+  const { rows } = await searchItems(config, "User", { range: params?.range ?? "0-4", criteria });
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -567,7 +685,11 @@ export async function getRuleTicket(
   );
 }
 
-/** List criteria of a ticket rule (sub-items) */
+/**
+ * List criteria of a ticket rule (sub-items). The sub-itemtype is RuleCriteria:
+ * "RuleTicketCriteria" (used before 3.4.0) is not a GLPI class and every call
+ * answered 400 ERROR_RESOURCE_NOT_FOUND_NOR_COMMONDBTM.
+ */
 export async function listRuleTicketCriteria(
   config: GlpiConfig,
   ruleId: number | string,
@@ -575,11 +697,11 @@ export async function listRuleTicketCriteria(
 ) {
   return glpiRequest<unknown>(
     config, "GET",
-    withQs(`/RuleTicket/${id(ruleId)}/RuleTicketCriteria`, { range: params?.range, expand_dropdowns: params?.expand_dropdowns }),
+    withQs(`/RuleTicket/${id(ruleId)}/RuleCriteria`, { range: params?.range, expand_dropdowns: params?.expand_dropdowns }),
   );
 }
 
-/** List actions of a ticket rule (sub-items) */
+/** List actions of a ticket rule (sub-items: RuleAction, see listRuleTicketCriteria). */
 export async function listRuleTicketAction(
   config: GlpiConfig,
   ruleId: number | string,
@@ -587,7 +709,7 @@ export async function listRuleTicketAction(
 ) {
   return glpiRequest<unknown>(
     config, "GET",
-    withQs(`/RuleTicket/${id(ruleId)}/RuleTicketAction`, { range: params?.range, expand_dropdowns: params?.expand_dropdowns }),
+    withQs(`/RuleTicket/${id(ruleId)}/RuleAction`, { range: params?.range, expand_dropdowns: params?.expand_dropdowns }),
   );
 }
 
@@ -678,8 +800,12 @@ export async function updateITILFollowupTemplate(
 // ---------------------------------------------------------------------------
 
 /** List changes */
-export async function listChanges(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean }) {
-  return glpiRequest<unknown[]>(config, "GET", withQs("/Change/", { range: params?.range, expand_dropdowns: params?.expand_dropdowns }));
+export async function listChanges(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean } & SortParams) {
+  return glpiRequest<unknown[]>(
+    config,
+    "GET",
+    withQs("/Change/", { range: params?.range, expand_dropdowns: params?.expand_dropdowns, sort: params?.sort, order: params?.order }),
+  );
 }
 
 /** Get a change by ID */
@@ -721,8 +847,12 @@ export async function listChangeFollowups(
 // ---------------------------------------------------------------------------
 
 /** List problems */
-export async function listProblems(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean }) {
-  return glpiRequest<unknown[]>(config, "GET", withQs("/Problem/", { range: params?.range, expand_dropdowns: params?.expand_dropdowns }));
+export async function listProblems(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean } & SortParams) {
+  return glpiRequest<unknown[]>(
+    config,
+    "GET",
+    withQs("/Problem/", { range: params?.range, expand_dropdowns: params?.expand_dropdowns, sort: params?.sort, order: params?.order }),
+  );
 }
 
 /** Get a problem by ID */
@@ -922,11 +1052,19 @@ export async function updateUser(config: GlpiConfig, userId: number | string, in
 // Rules CRUD
 // ---------------------------------------------------------------------------
 
-/** List ticket rules */
+/**
+ * List ticket rules. GET /RuleTicket returns rows of EVERY rule type (asset
+ * import, dictionaries, mail collector...: 15 ticket rules out of 177 on the
+ * test instance), so the listing is narrowed to sub_type RuleTicket.
+ */
 export async function listRules(config: GlpiConfig, params?: { range?: string; expand_dropdowns?: boolean }) {
   return glpiRequest<unknown[]>(
     config, "GET",
-    withQs("/RuleTicket", { range: params?.range, expand_dropdowns: params?.expand_dropdowns }),
+    withQs("/RuleTicket", {
+      range: params?.range,
+      expand_dropdowns: params?.expand_dropdowns,
+      "searchText[sub_type]": "^RuleTicket$",
+    }),
   );
 }
 

@@ -6,6 +6,29 @@ import {
 } from "@nextoolsolutions/mcp-glpi-core";
 import type { GlpiConfig } from "./glpi-client.js";
 import {
+  ACTOR_TYPE_NAMES,
+  SOLUTION_NAMES,
+  FOLLOWUP_NAMES,
+  TASK_NAMES,
+  VALIDATION_NAMES,
+  VALIDATION_STATUS_NAMES,
+  addCodeName,
+  addNames,
+  nameFollowups,
+  nameTasks,
+  nameValidations,
+} from "./names.js";
+import {
+  MY_TICKET_ROLES,
+  TICKET_SORT_FIELDS,
+  TICKET_STATUS_FILTERS,
+  listMyTickets,
+  listTicketsSorted,
+  nameTicket,
+} from "./ticket-lists.js";
+import { namedSearchRows } from "./search-columns.js";
+import { itemIdSchema } from "./ids.js";
+import {
   // Existing (Phase 0) — 48 tools
   listTickets,
   getTicket,
@@ -150,14 +173,45 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       : null,
   );
 
+  /** Applies a name resolver to a sub-item listing (anything that is not an array becomes []). */
+  async function nameRows(
+    result: unknown,
+    namer: (c: GlpiConfig, rows: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>,
+  ): Promise<Record<string, unknown>[]> {
+    return Array.isArray(result) ? namer(config, result as Record<string, unknown>[]) : [];
+  }
+
   // ---------------------------------------------------------------------------
   // Shorthand schemas
   // ---------------------------------------------------------------------------
 
-  const idSchema = z.union([z.string(), z.number()]).describe("Item ID");
+  const idSchema = itemIdSchema();
+  /** Entity IDs: 0 is the root entity. */
+  const entityIdSchema = itemIdSchema("Entity ID", { allowZero: true });
   const rangeSchema = z.string().optional().describe("Pagination range, e.g. 0-49");
   const expandSchema = z.boolean().optional().describe("Expand dropdown IDs to names");
   const outData = () => z.object({ data: z.unknown() });
+  const outRows = () =>
+    z.object({
+      data: z.unknown(),
+      total: z.number().optional().describe("Total matching items in GLPI (all pages)"),
+    });
+
+  /** Ticket status names accepted by the list tools ("open" = not solved nor closed). */
+  const statusEnum = z.enum(TICKET_STATUS_FILTERS);
+  const statusSchema = z
+    .union([statusEnum, z.array(statusEnum)])
+    .optional();
+  const ticketSortSchema = z
+    .enum(TICKET_SORT_FIELDS)
+    .optional()
+    .describe("Sort column (default date_mod = last update)");
+  const orderSchema = z.enum(["asc", "desc"]).optional().describe("Sort direction (default desc = most recent first)");
+  /** Sort columns of changes and problems (getAllItems column names). */
+  const itilSortSchema = z
+    .enum(["date_mod", "date", "id", "priority", "status", "name"])
+    .optional()
+    .describe("Sort column (default date_mod = last update)");
 
 
   // ===========================================================================
@@ -168,16 +222,65 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_tickets",
     {
       title: "List tickets",
-      description: "List GLPI tickets with optional pagination and dropdown expansion.",
+      description:
+        "List GLPI tickets of the whole instance (every ticket the connected user may see), most recently " +
+        "updated first by default. Filter by status (e.g. status: 'open' = not solved nor closed) and choose " +
+        "the sort column and direction. For the connected user's OWN tickets (\"my tickets\") use " +
+        "glpi_list_my_tickets instead.",
       inputSchema: z.object({
         range: rangeSchema,
         expand_dropdowns: expandSchema,
+        status: statusSchema.describe(
+          "Only tickets in these statuses: new, assigned (= processing), planned, pending, solved, closed, " +
+            "or open (= new + assigned + planned + pending). One name or a list. Default: every status.",
+        ),
+        sort: ticketSortSchema,
+        order: orderSchema,
       }),
-      outputSchema: outData(),
+      outputSchema: outRows(),
     },
-    wrap(async ({ range, expand_dropdowns }) => {
-      const result = await listTickets(config, { range, expand_dropdowns });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+    wrap(async ({ range, expand_dropdowns, status, sort, order }) => {
+      const { rows, total } = await listTicketsSorted(config, { range, expand_dropdowns, status, sort, order }, (p) =>
+        listTickets(config, p),
+      );
+      return jsonResult(total === undefined ? { data: rows } : { data: rows, total });
+    }),
+  );
+
+  server.registerTool(
+    "glpi_list_my_tickets",
+    {
+      title: "List my tickets",
+      description:
+        "\"My tickets\": tickets of the connected GLPI user (or of users_id) where they are requester, " +
+        "assigned technician or observer. Defaults: open tickets only (not solved nor closed), most recently " +
+        "updated first. Each row names the people: requesters, assigned and observers as {id, name}, plus " +
+        "status_name and my_roles. Use this for \"meus chamados\", \"my open tickets\", \"tickets assigned to me\".",
+      inputSchema: z.object({
+        role: z
+          .enum(MY_TICKET_ROLES)
+          .optional()
+          .describe("Which link to the user: requester, assigned (technician), observer, or any (default)"),
+        status: statusSchema.describe(
+          "Statuses to include (default open = not solved nor closed): new, assigned (= processing), planned, " +
+            "pending, solved, closed, open. One name or a list.",
+        ),
+        sort: ticketSortSchema,
+        order: orderSchema,
+        range: rangeSchema,
+        users_id: idSchema.optional().describe("Another user's ID (default: the connected user)"),
+      }),
+      outputSchema: z.object({
+        data: z.unknown(),
+        total: z.number().optional().describe("Total matching tickets (all pages)"),
+        user: z.object({ id: z.number(), name: z.string().nullable() }).optional().describe("Whose tickets these are"),
+        role: z.string().optional(),
+        status: z.array(z.string()).optional(),
+      }),
+    },
+    wrap(async ({ role, status, sort, order, range, users_id }) => {
+      const r = await listMyTickets(config, { role, status, sort, order, range, users_id });
+      return jsonResult({ data: r.rows, total: r.total, user: r.user, role: r.role, status: r.status });
     }),
   );
 
@@ -185,11 +288,23 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_get_ticket",
     {
       title: "Get ticket",
-      description: "Retrieve a single ticket by ID.",
-      inputSchema: z.object({ ticketId: idSchema }),
+      description:
+        "Retrieve a single ticket by ID. IDs come with names beside them (recipient_name, category_name, " +
+        "entity_name, status_name, type_name...). Requesters, technicians and observers are not ticket " +
+        "fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups).",
+      inputSchema: z.object({
+        ticketId: idSchema,
+        expand_dropdowns: expandSchema.describe(
+          "Replace dropdown IDs with their names in place (loses the IDs; by default names are added beside them)",
+        ),
+      }),
       outputSchema: outData(),
     },
-    wrap(async ({ ticketId }) => jsonResult({ data: (await getTicket(config, ticketId)) ?? {} })),
+    wrap(async ({ ticketId, expand_dropdowns }) => {
+      const ticket = await getTicket(config, ticketId, { expand_dropdowns });
+      if (!ticket || typeof ticket !== "object") return jsonResult({ data: {} });
+      return jsonResult({ data: expand_dropdowns ? ticket : await nameTicket(config, ticket) });
+    }),
   );
 
   server.registerTool(
@@ -230,12 +345,17 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_changes",
     {
       title: "List changes",
-      description: "List change management items with optional pagination.",
-      inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema }),
+      description: "List change management items, most recently updated first by default.",
+      inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema, sort: itilSortSchema, order: orderSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ range, expand_dropdowns }) => {
-      const result = await listChanges(config, { range, expand_dropdowns });
+    wrap(async ({ range, expand_dropdowns, sort, order }) => {
+      const result = await listChanges(config, {
+        range,
+        expand_dropdowns,
+        sort: sort ?? "date_mod",
+        order: order === "asc" ? "ASC" : "DESC",
+      });
       return jsonResult({ data: Array.isArray(result) ? result : [] });
     }),
   );
@@ -277,11 +397,13 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_change_followups",
     {
       title: "List change followups",
-      description: "List followups (comments) of a change.",
+      description: "List followups (comments) of a change, with the author's name (user_name).",
       inputSchema: z.object({ changeId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ changeId, range, expand_dropdowns }) => jsonResult({ data: (await listChangeFollowups(config, changeId, { range, expand_dropdowns })) ?? [] })),
+    wrap(async ({ changeId, range, expand_dropdowns }) =>
+      jsonResult({ data: await nameRows(await listChangeFollowups(config, changeId, { range, expand_dropdowns }), nameFollowups) }),
+    ),
   );
 
   // ===========================================================================
@@ -292,12 +414,17 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_problems",
     {
       title: "List problems",
-      description: "List problem management items with optional pagination.",
-      inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema }),
+      description: "List problem management items, most recently updated first by default.",
+      inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema, sort: itilSortSchema, order: orderSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ range, expand_dropdowns }) => {
-      const result = await listProblems(config, { range, expand_dropdowns });
+    wrap(async ({ range, expand_dropdowns, sort, order }) => {
+      const result = await listProblems(config, {
+        range,
+        expand_dropdowns,
+        sort: sort ?? "date_mod",
+        order: order === "asc" ? "ASC" : "DESC",
+      });
       return jsonResult({ data: Array.isArray(result) ? result : [] });
     }),
   );
@@ -339,11 +466,13 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_problem_followups",
     {
       title: "List problem followups",
-      description: "List followups (comments) of a problem.",
+      description: "List followups (comments) of a problem, with the author's name (user_name).",
       inputSchema: z.object({ problemId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ problemId, range, expand_dropdowns }) => jsonResult({ data: (await listProblemFollowups(config, problemId, { range, expand_dropdowns })) ?? [] })),
+    wrap(async ({ problemId, range, expand_dropdowns }) =>
+      jsonResult({ data: await nameRows(await listProblemFollowups(config, problemId, { range, expand_dropdowns }), nameFollowups) }),
+    ),
   );
 
   // ===========================================================================
@@ -355,23 +484,42 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Search items",
       description:
-        "Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, etc. " +
-        "Use glpi_list_search_options to discover available fields for each itemtype.",
+        "Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. " +
+        "Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = " +
+        "contains | equals | notequals | lessthan | morethan | under, link = AND | OR (omit on the first). " +
+        "Rows come keyed by search option ID ('1' = name, '2' = id on most itemtypes); named_columns=true " +
+        "keys them by option name instead. Use glpi_list_search_options to discover the option IDs.",
       inputSchema: z.object({
         itemtype: z.string().describe("Item type, e.g. Ticket, User, Change, Problem"),
         range: rangeSchema,
-        criteria: z.array(z.record(z.unknown())).optional().describe("Array of {field, searchtype, value}"),
-        forcedisplay: z.array(z.number()).optional().describe("Field IDs to force display"),
+        criteria: z
+          .array(z.record(z.unknown()))
+          .optional()
+          .describe(
+            "Array of {field, searchtype, value, link}; a group is {link, criteria: [...]} (e.g. requester OR technician)",
+          ),
+        forcedisplay: z.array(z.number()).optional().describe("Search option IDs to add as columns"),
+        sort: z.number().int().optional().describe("Search option ID to sort by (e.g. 19 = last update on Ticket)"),
+        order: z.enum(["asc", "desc"]).optional().describe("Sort direction (default asc)"),
+        named_columns: z
+          .boolean()
+          .optional()
+          .describe("Key each row by search option name ('Title', 'Status'...) instead of its numeric ID"),
       }),
-      outputSchema: outData(),
+      outputSchema: outRows(),
     },
     wrap(async (params) => {
-      const result = await search(config, params.itemtype, {
+      const res = await search(config, params.itemtype, {
         range: params.range,
         criteria: params.criteria as Record<string, unknown>[] | undefined,
         forcedisplay: params.forcedisplay,
+        sort: params.sort,
+        order: params.order === "desc" ? "DESC" : params.order === "asc" ? "ASC" : undefined,
       });
-      return jsonResult({ data: result ?? [] });
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      const total = typeof res?.totalcount === "number" ? res.totalcount : rows.length;
+      const data = params.named_columns ? await namedSearchRows(config, params.itemtype, rows) : rows;
+      return jsonResult({ data, total });
     }),
   );
 
@@ -388,7 +536,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         ticketId: idSchema,
         content: z.string().describe("Followup text content"),
         is_private: z.number().optional().describe("1 for private, 0 for public (default: 0)"),
-        users_id: z.number().optional().describe("Author user ID (default: session user)"),
+        users_id: z.number().int().positive().optional().describe("Author user ID (default: session user)"),
       }),
       outputSchema: outData(),
     },
@@ -401,11 +549,13 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_followups",
     {
       title: "List ticket followups",
-      description: "List followups (comments) of a ticket.",
+      description: "List followups (comments) of a ticket, oldest first, with the author's name (user_name).",
       inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ ticketId, range }) => jsonResult({ data: (await listFollowups(config, ticketId, { range })) ?? [] })),
+    wrap(async ({ ticketId, range }) =>
+      jsonResult({ data: await nameRows(await listFollowups(config, ticketId, { range }), nameFollowups) }),
+    ),
   );
 
   // ===========================================================================
@@ -436,11 +586,15 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_ticket_validations",
     {
       title: "List ticket validations",
-      description: "List approval/validation requests for a ticket.",
+      description:
+        "List approval/validation requests for a ticket, with requester and approver names " +
+        "(user_name, validator_name) and status_name (None, Waiting, Accepted, Refused).",
       inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ ticketId, range }) => jsonResult({ data: (await listTicketValidations(config, ticketId, { range })) ?? [] })),
+    wrap(async ({ ticketId, range }) =>
+      jsonResult({ data: await nameRows(await listTicketValidations(config, ticketId, { range }), nameValidations) }),
+    ),
   );
 
   server.registerTool(
@@ -506,7 +660,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_search_user_by_email",
     {
       title: "Search user by email",
-      description: "Search for a user by email address.",
+      description: "Find users by exact email address (returns the user items: id, login, real name, first name...).",
       inputSchema: z.object({ email: z.string().describe("Email address"), range: rangeSchema }),
       outputSchema: outData(),
     },
@@ -792,7 +946,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get entity",
       description: "Retrieve an entity by ID.",
-      inputSchema: z.object({ entityId: idSchema }),
+      inputSchema: z.object({ entityId: entityIdSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ entityId }) => jsonResult({ data: (await getEntity(config, entityId)) ?? {} })),
@@ -814,7 +968,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update entity",
       description: "Update an existing entity by ID.",
-      inputSchema: z.object({ entityId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ entityId: entityIdSchema, input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ entityId, input }) => jsonResult({ data: await updateEntity(config, entityId, input as Record<string, unknown>) })),
@@ -825,7 +979,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete entity",
       description: "Permanently delete an entity by ID. WARNING: irreversible action.",
-      inputSchema: z.object({ entityId: idSchema }),
+      inputSchema: z.object({ entityId: entityIdSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ entityId }) => jsonResult({ data: await deleteEntity(config, entityId) })),
@@ -1055,7 +1209,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Change the active entity for the current session. Essential for multi-entity GLPI instances. " +
         "Use is_recursive=true to include sub-entities.",
       inputSchema: z.object({
-        entityId: idSchema.describe("Entity ID to switch to"),
+        entityId: entityIdSchema.describe("Entity ID to switch to"),
         is_recursive: z.boolean().optional().describe("Include sub-entities (default: false)"),
       }),
       outputSchema: outData(),
@@ -1087,14 +1241,16 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket users",
       description:
-        "List all users linked to a ticket (requesters, observers, assigned). " +
-        "type: 1=Requester, 2=Assigned, 3=Observer.",
+        "List all users linked to a ticket (requesters, observers, assigned), with each person's name " +
+        "(user_name) beside users_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({ ticketId: idSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
       const result = await listTicketUsers(config, ticketId);
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      const named = await addNames(config, rows, [{ field: "users_id", itemtype: "User", as: "user_name" }]);
+      return jsonResult({ data: addCodeName(named, "type", "type_name", ACTOR_TYPE_NAMES) });
     }),
   );
 
@@ -1137,14 +1293,16 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket groups",
       description:
-        "List all groups linked to a ticket (requester, observer, assigned). " +
-        "type: 1=Requester, 2=Assigned, 3=Observer.",
+        "List all groups linked to a ticket (requester, observer, assigned), with each group's name " +
+        "(group_name) beside groups_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({ ticketId: idSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
       const result = await listTicketGroups(config, ticketId);
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      const named = await addNames(config, rows, [{ field: "groups_id", itemtype: "Group", as: "group_name" }]);
+      return jsonResult({ data: addCodeName(named, "type", "type_name", ACTOR_TYPE_NAMES) });
     }),
   );
 
@@ -1186,14 +1344,13 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_ticket_tasks",
     {
       title: "List ticket tasks",
-      description: "List tasks (to-do items) for a ticket.",
+      description: "List tasks (to-do items) for a ticket, with author, technician and group names (user_name, tech_name, tech_group_name).",
       inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ ticketId, range }) => {
-      const result = await listTicketTasks(config, ticketId, { range });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
-    }),
+    wrap(async ({ ticketId, range }) =>
+      jsonResult({ data: await nameRows(await listTicketTasks(config, ticketId, { range }), nameTasks) }),
+    ),
   );
 
   server.registerTool(
@@ -1210,7 +1367,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         is_private: z.number().optional().describe("1=private, 0=public"),
         state: z.number().optional().describe("0=Info, 1=To do, 2=Done"),
         actiontime: z.number().optional().describe("Duration in seconds"),
-        users_id_tech: z.number().optional().describe("Assigned technician user ID"),
+        users_id_tech: z.number().int().positive().optional().describe("Assigned technician user ID"),
       }),
       outputSchema: outData(),
     },
@@ -1223,28 +1380,26 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_change_tasks",
     {
       title: "List change tasks",
-      description: "List tasks for a change.",
+      description: "List tasks for a change, with author, technician and group names.",
       inputSchema: z.object({ changeId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ changeId, range }) => {
-      const result = await listChangeTasks(config, changeId, { range });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
-    }),
+    wrap(async ({ changeId, range }) =>
+      jsonResult({ data: await nameRows(await listChangeTasks(config, changeId, { range }), nameTasks) }),
+    ),
   );
 
   server.registerTool(
     "glpi_list_problem_tasks",
     {
       title: "List problem tasks",
-      description: "List tasks for a problem.",
+      description: "List tasks for a problem, with author, technician and group names.",
       inputSchema: z.object({ problemId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ problemId, range }) => {
-      const result = await listProblemTasks(config, problemId, { range });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
-    }),
+    wrap(async ({ problemId, range }) =>
+      jsonResult({ data: await nameRows(await listProblemTasks(config, problemId, { range }), nameTasks) }),
+    ),
   );
 
   // ===========================================================================
@@ -1663,12 +1818,14 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Get ticket stats",
       description:
         "Ticket counts per status (New, Processing, Pending, Solved, Closed) plus the total, " +
-        "without listing the tickets. Optional criteria narrow the scope (e.g. one entity).",
+        "without listing the tickets. Optional criteria narrow the scope, e.g. one entity: " +
+        "[{field: 80, searchtype: 'equals', value: <entity id>}] (Ticket search option IDs: 80 = entity, " +
+        "4 = requester, 5 = technician, 7 = category; same criteria shape as glpi_search).",
       inputSchema: z.object({
         criteria: z
           .array(z.record(z.unknown()))
           .optional()
-          .describe("Optional criteria to narrow the scope, same shape as glpi_search"),
+          .describe("Optional criteria to narrow the scope: array of {field, searchtype, value, link}"),
       }),
       outputSchema: outData(),
     },
@@ -1687,18 +1844,29 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "List timeline",
       description:
         "Followups, tasks, solutions and validations of a ticket, change or problem, merged " +
-        "into one chronological list (oldest first). Replaces calling the four list tools " +
-        "separately and interleaving them by hand.",
+        "into one chronological list (oldest first; order 'desc' for the latest first), with the " +
+        "people's names (user_name, tech_name, validator_name) and the solution type name. " +
+        "Replaces calling the four list tools separately and interleaving them by hand.",
       inputSchema: z.object({
         itemtype: z.enum(["Ticket", "Change", "Problem"]).describe("ITIL item type"),
         itemId: idSchema,
-        range: rangeSchema,
+        range: rangeSchema.describe("Pagination range over the merged timeline, e.g. 0-24"),
+        order: z.enum(["asc", "desc"]).optional().describe("asc (default) = oldest first, desc = latest first"),
       }),
       outputSchema: outData(),
     },
-    wrap(async ({ itemtype, itemId, range }) =>
-      jsonResult({ data: await listTimeline(config, itemtype, itemId, { range }) }),
-    ),
+    wrap(async ({ itemtype, itemId, range, order }) => {
+      const entries = await listTimeline(config, itemtype, itemId, { range, order });
+      const named = await addNames(config, entries, (e) =>
+        e.type === "task" ? TASK_NAMES : e.type === "solution" ? SOLUTION_NAMES : e.type === "validation" ? VALIDATION_NAMES : FOLLOWUP_NAMES,
+      );
+      const labelled = named.map((e) =>
+        e.type === "validation" && VALIDATION_STATUS_NAMES[Number(e.status)] !== undefined
+          ? { ...e, status_name: VALIDATION_STATUS_NAMES[Number(e.status)] }
+          : e,
+      );
+      return jsonResult({ data: labelled });
+    }),
   );
 
   // ===========================================================================
@@ -1791,14 +1959,17 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List webhook deliveries",
       description:
-        "Delivery queue (QueuedWebhook): what was sent, when, and what is still pending. " +
+        "Delivery queue (QueuedWebhook): what was sent, when, and what is still pending, newest first. " +
         "Filter by webhook name, or only_failed to see what has been retried.",
       inputSchema: z.object({
         webhook_name: z
           .string()
           .optional()
           .describe("Restrict to webhooks whose name contains this text"),
-        only_failed: z.boolean().optional().describe("Only deliveries that failed at least once"),
+        only_failed: z
+          .boolean()
+          .optional()
+          .describe("Only deliveries that failed: retried at least once (sent_try > 1) or last HTTP status >= 300"),
         range: rangeSchema,
       }),
       outputSchema: outData(),

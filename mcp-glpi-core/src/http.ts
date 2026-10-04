@@ -190,9 +190,15 @@ export function backoffDelay(attempt: number): number {
   return BACKOFF_BASE * 2 ** attempt;
 }
 
-/** Sanitise an ID for use in URL paths (prevents path traversal). */
+/**
+ * Sanitise an ID for use in URL paths (prevents path traversal). An empty ID
+ * throws: `/ITILCategory/` + "" is the collection URL, and a get would return
+ * the listing as if it were the item.
+ */
 export function sanitizeId(v: string | number): string {
-  return encodeURIComponent(String(v));
+  const s = String(v ?? "").trim();
+  if (s === "" || s === "undefined" || s === "null") throw new Error("missing ID: refusing to build a collection URL");
+  return encodeURIComponent(s);
 }
 
 export function qs(params: Record<string, string | number | boolean | undefined>): string {

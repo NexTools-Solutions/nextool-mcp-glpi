@@ -9,7 +9,7 @@
  */
 
 import { sanitizeId, withQs } from "@nextoolsolutions/mcp-glpi-core";
-import { glpiRequest, search, type GlpiConfig } from "./glpi-client.js";
+import { glpiRequest, searchItems, type GlpiConfig } from "./glpi-client.js";
 
 const UNSUPPORTED_MARKER = "ERROR_RESOURCE_NOT_FOUND_NOR_COMMONDBTM";
 
@@ -97,8 +97,10 @@ export async function setWebhookActive(
  * (glpi_list_search_options). There is no search option for the webhook
  * foreign key — only the joined webhook name — so the filter matches on name.
  */
+const QUEUED_FIELD_ID = 2;
 const QUEUED_FIELD_WEBHOOK_NAME = 22;
 const QUEUED_FIELD_SENT_TRY = 15;
+const QUEUED_FIELD_LAST_STATUS = 30;
 
 /**
  * Delivery history. `only_failed` uses the retry counter: GLPI increments
@@ -118,22 +120,29 @@ export async function listWebhookDeliveries(
     });
   }
   if (params?.only_failed) {
+    // sent_try and last_status_code only accept contains/notcontains/empty; the
+    // former "morethan 0" was ignored by GLPI (and sent_try is 1 after a normal
+    // first delivery). Failed = retried at least once, or last answer >= 300.
+    // Numeric `contains` takes comparison operators (">1", ">=300").
     criteria.push({
       link: criteria.length ? "AND" : undefined,
-      field: QUEUED_FIELD_SENT_TRY,
-      searchtype: "morethan",
-      value: "0",
+      criteria: [
+        { field: QUEUED_FIELD_SENT_TRY, searchtype: "contains", value: ">1" },
+        { link: "OR", field: QUEUED_FIELD_LAST_STATUS, searchtype: "contains", value: ">=300" },
+      ],
     });
   }
 
+  // Newest first; filtered or not, the rows have the same shape (full items,
+  // not search columns keyed by option ID, as before 3.4.0).
   if (criteria.length === 0) {
     return webhookRequest(() =>
-      glpiRequest<unknown[]>(config, "GET", withQs("/QueuedWebhook/", { range: params?.range })),
+      glpiRequest<unknown[]>(config, "GET", withQs("/QueuedWebhook/", { range: params?.range, sort: "id", order: "DESC" })),
     );
   }
 
-  return webhookRequest(() =>
-    search(config, "QueuedWebhook", { range: params?.range, criteria }),
+  return webhookRequest(async () =>
+    (await searchItems(config, "QueuedWebhook", { range: params?.range, criteria, sort: QUEUED_FIELD_ID, order: "DESC" })).rows,
   );
 }
 

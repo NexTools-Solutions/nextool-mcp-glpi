@@ -507,8 +507,23 @@ export function getUser(cfg: GlpiV2Config, userId: number | string) {
   return glpiV2Request<Record<string, unknown>>(cfg, "GET", `/Administration/User/${id(userId)}`);
 }
 
-export function getMe(cfg: GlpiV2Config) {
-  return glpiV2Request<Record<string, unknown>>(cfg, "GET", "/Administration/User/Me");
+/**
+ * The connected user. GET /Administration/User/Me needs the OAuth "user" scope;
+ * with the default "api" scope GLPI 11.0.7 answers 403 ERROR_RIGHT_MISSING, so
+ * the user is then read through the session (user_id) instead.
+ */
+export async function getMe(cfg: GlpiV2Config): Promise<Record<string, unknown>> {
+  try {
+    return await glpiV2Request<Record<string, unknown>>(cfg, "GET", "/Administration/User/Me");
+  } catch (e) {
+    if (!(e instanceof GlpiV2ApiError) || e.status !== 403) throw e;
+    const session = await getSession(cfg);
+    const userId = Number(session?.user_id);
+    if (!Number.isInteger(userId) || userId <= 0) throw e;
+    const user = await glpiV2Request<unknown>(cfg, "GET", `/Administration/User/${userId}`);
+    const item = Array.isArray(user) ? user[0] : user;
+    return { ...(typeof item === "object" && item !== null ? (item as Record<string, unknown>) : { id: userId }), source: "session" };
+  }
 }
 
 export function createUser(cfg: GlpiV2Config, data: Record<string, unknown>) {
@@ -696,10 +711,33 @@ export function createRule(cfg: GlpiV2Config, collection: string, data: Record<s
 // Session & Status
 // ===========================================================================
 
+/**
+ * Session of the OAuth user. It lives under the API prefix (/api.php/v2.x/session);
+ * before 3.4.0 it was requested at the GLPI root and always answered 404.
+ */
 export function getSession(cfg: GlpiV2Config) {
-  return glpiV2Request<Record<string, unknown>>(cfg, "GET", "/session", undefined, { raw: true });
+  return glpiV2Request<Record<string, unknown>>(cfg, "GET", "/session");
 }
 
-export function healthCheck(cfg: GlpiV2Config) {
-  return glpiV2Request<Record<string, unknown>>(cfg, "GET", "/status", undefined, { raw: true });
+/**
+ * GET /api.php/v2.x/status (was requested at the GLPI root: 404). That endpoint
+ * needs the OAuth "status" scope; with the usual "api" scope GLPI answers 403,
+ * and the check falls back to the session endpoint, which proves the API is up
+ * and the credentials work.
+ */
+export async function healthCheck(cfg: GlpiV2Config): Promise<Record<string, unknown>> {
+  try {
+    const status = await glpiV2Request<unknown>(cfg, "GET", "/status");
+    return typeof status === "object" && status !== null && !Array.isArray(status)
+      ? (status as Record<string, unknown>)
+      : { services: status };
+  } catch (e) {
+    if (!(e instanceof GlpiV2ApiError) || e.status !== 403) throw e;
+    const session = await getSession(cfg);
+    return {
+      checked: "session",
+      current_time: session?.current_time,
+      note: "GET /status needs the OAuth 'status' scope; the API answered on /session instead.",
+    };
+  }
 }

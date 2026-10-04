@@ -39,8 +39,16 @@ export function jsonResult(obj: unknown): ToolTextResult {
   };
 }
 
+/**
+ * An error as an MCP tool result: the message in the text block, no
+ * `structuredContent`. The MCP SDK client validates structuredContent against
+ * the tool's outputSchema even when isError is set, so an `{ error }` object
+ * there (as before 1.2.0) turned every GLPI error (404, 403...) into a client
+ * protocol error ("Structured content does not match the tool's output
+ * schema") once the client had listed the tools, hiding the actual message.
+ */
 export function errorResult(msg: string): ToolTextResult {
-  return { ...jsonResult({ error: msg }), isError: true };
+  return { content: [{ type: "text" as const, text: JSON.stringify({ error: msg }, null, 2) }], isError: true };
 }
 
 /**

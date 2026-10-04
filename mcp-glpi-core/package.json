@@ -1,6 +1,6 @@
 {
   "name": "@nextoolsolutions/mcp-glpi-core",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Shared infrastructure for the GLPI MCP servers: HTTP transport with retry, typed errors, tool-result helpers, write policy, payload formatting and idempotency.",
   "type": "module",
   "main": "dist/index.js",

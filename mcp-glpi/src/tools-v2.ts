@@ -5,6 +5,8 @@ import {
   makeWrap,
 } from "@nextoolsolutions/mcp-glpi-core";
 import type { GlpiV2Config } from "./glpi-v2-client.js";
+import { itemIdSchema } from "./ids.js";
+import { TICKET_STATUS_FILTERS, normalizeStatuses, statusCodes } from "./ticket-lists.js";
 import {
   // Entity
   listEntities, getEntity, createEntity, updateEntity, deleteEntity,
@@ -63,6 +65,22 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
 
   const itilItemtypeSchema = z.enum(["Ticket", "Change", "Problem"]).describe("ITIL item type");
 
+  /** Default order of the ITIL listings: latest update first (the API default is id ascending). */
+  const RECENT_FIRST = "date_mod:desc";
+  const itilListSchema = listParamsSchema.extend({
+    sort: z.string().optional().describe("Sort, e.g. date_mod:desc (default), date:desc, id:asc, priority:desc"),
+  });
+  const statusEnum = z.enum(TICKET_STATUS_FILTERS);
+
+  /** RSQL on status.id for the status names; the caller's filter is kept and ANDed. */
+  function withStatusFilter(filter: string | undefined, status: string | readonly string[] | undefined): string | undefined {
+    const statuses = normalizeStatuses(status);
+    if (statuses.length === 0) return filter;
+    const codes = statusCodes(statuses);
+    const rsql = codes.length === 1 ? `status.id==${codes[0]}` : `status.id=in=(${codes.join(",")})`;
+    return filter ? `(${filter});${rsql}` : rsql;
+  }
+
 
   // ===========================================================================
   // ENTITY (5 tools)
@@ -84,7 +102,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get entity",
       description: "Retrieve a single entity by ID.",
-      inputSchema: z.object({ entityId: z.union([z.string(), z.number()]).describe("Entity ID") }),
+      inputSchema: z.object({ entityId: itemIdSchema("Entity ID", { allowZero: true }) }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ entityId }) => jsonResult(await getEntity(config, entityId))),
@@ -109,7 +127,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update entity",
       description: "Update an existing entity by ID.",
       inputSchema: z.object({
-        entityId: z.union([z.string(), z.number()]).describe("Entity ID"),
+        entityId: itemIdSchema("Entity ID", { allowZero: true }),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -123,7 +141,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Delete entity",
       description: "Delete an entity by ID. Use force=true for permanent deletion.",
       inputSchema: z.object({
-        entityId: z.union([z.string(), z.number()]).describe("Entity ID"),
+        entityId: itemIdSchema("Entity ID", { allowZero: true }),
         force: z.boolean().optional().describe("Force permanent deletion"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -142,11 +160,25 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_list_tickets",
     {
       title: "List tickets",
-      description: "List tickets via /Assistance/Ticket. Supports RSQL filter, pagination and sorting.",
-      inputSchema: listParamsSchema,
+      description:
+        "List tickets via /Assistance/Ticket, most recently updated first by default. Filter by status " +
+        "(status: 'open' = not solved nor closed) and/or an RSQL filter; each ticket carries its team " +
+        "(requester, assigned, observer) with names. The v2 API cannot filter on the team, so this tool " +
+        "cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled.",
+      inputSchema: itilListSchema.extend({
+        status: z
+          .union([statusEnum, z.array(statusEnum)])
+          .optional()
+          .describe(
+            "Only tickets in these statuses: new, assigned (= processing), planned, pending, solved, closed, " +
+              "or open (= new + assigned + planned + pending). One name or a list. Default: every status.",
+          ),
+      }),
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async (p) => jsonResult(await listTickets(config, p))),
+    wrap(async ({ status, ...p }) =>
+      jsonResult(await listTickets(config, { ...p, sort: p.sort ?? RECENT_FIRST, filter: withStatusFilter(p.filter, status) })),
+    ),
   );
 
   server.registerTool(
@@ -154,7 +186,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get ticket",
       description: "Retrieve a single ticket by ID.",
-      inputSchema: z.object({ ticketId: z.union([z.string(), z.number()]).describe("Ticket ID") }),
+      inputSchema: z.object({ ticketId: itemIdSchema("Ticket ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ ticketId }) => jsonResult(await getTicket(config, ticketId))),
@@ -179,7 +211,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update ticket",
       description: "Update an existing ticket by ID.",
       inputSchema: z.object({
-        ticketId: z.union([z.string(), z.number()]).describe("Ticket ID"),
+        ticketId: itemIdSchema("Ticket ID"),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -193,7 +225,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Delete ticket",
       description: "Delete a ticket by ID. Use force=true for permanent deletion.",
       inputSchema: z.object({
-        ticketId: z.union([z.string(), z.number()]).describe("Ticket ID"),
+        ticketId: itemIdSchema("Ticket ID"),
         force: z.boolean().optional().describe("Force permanent deletion"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -212,11 +244,12 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_list_changes",
     {
       title: "List changes",
-      description: "List change requests via /Assistance/Change. Supports RSQL filter, pagination and sorting.",
-      inputSchema: listParamsSchema,
+      description:
+        "List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting.",
+      inputSchema: itilListSchema,
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async (p) => jsonResult(await listChanges(config, p))),
+    wrap(async (p) => jsonResult(await listChanges(config, { ...p, sort: p.sort ?? RECENT_FIRST }))),
   );
 
   server.registerTool(
@@ -224,7 +257,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get change",
       description: "Retrieve a single change by ID.",
-      inputSchema: z.object({ changeId: z.union([z.string(), z.number()]).describe("Change ID") }),
+      inputSchema: z.object({ changeId: itemIdSchema("Change ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ changeId }) => jsonResult(await getChange(config, changeId))),
@@ -249,7 +282,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update change",
       description: "Update an existing change by ID.",
       inputSchema: z.object({
-        changeId: z.union([z.string(), z.number()]).describe("Change ID"),
+        changeId: itemIdSchema("Change ID"),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -265,11 +298,12 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_list_problems",
     {
       title: "List problems",
-      description: "List problems via /Assistance/Problem. Supports RSQL filter, pagination and sorting.",
-      inputSchema: listParamsSchema,
+      description:
+        "List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting.",
+      inputSchema: itilListSchema,
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async (p) => jsonResult(await listProblems(config, p))),
+    wrap(async (p) => jsonResult(await listProblems(config, { ...p, sort: p.sort ?? RECENT_FIRST }))),
   );
 
   server.registerTool(
@@ -277,7 +311,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get problem",
       description: "Retrieve a single problem by ID.",
-      inputSchema: z.object({ problemId: z.union([z.string(), z.number()]).describe("Problem ID") }),
+      inputSchema: z.object({ problemId: itemIdSchema("Problem ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ problemId }) => jsonResult(await getProblem(config, problemId))),
@@ -302,7 +336,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update problem",
       description: "Update an existing problem by ID.",
       inputSchema: z.object({
-        problemId: z.union([z.string(), z.number()]).describe("Problem ID"),
+        problemId: itemIdSchema("Problem ID"),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -321,7 +355,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "List all timeline entries (followups, solutions, tasks, validations) for an ITIL item.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
       }),
       outputSchema: z.object({}).passthrough(),
     },
@@ -335,7 +369,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Add a followup to a Ticket, Change or Problem.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
         input: z.record(z.unknown()).describe('Followup data (e.g. { "content": "Update on this ticket" })'),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -352,7 +386,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Add a solution to a Ticket, Change or Problem.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
         input: z.record(z.unknown()).describe('Solution data (e.g. { "content": "Resolved by..." })'),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -369,7 +403,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Add a task to a Ticket, Change or Problem.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
         input: z.record(z.unknown()).describe('Task data (e.g. { "content": "Investigate root cause", "state": 1 })'),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -386,7 +420,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Request validation for a Ticket, Change or Problem.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
         input: z.record(z.unknown()).describe('Validation data (e.g. { "users_id_validate": 5, "comment_submission": "Please review" })'),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -403,8 +437,8 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Approve or refuse a validation request.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
-        validationId: z.union([z.string(), z.number()]).describe("Validation ID"),
+        itemId: itemIdSchema("Item ID"),
+        validationId: itemIdSchema("Validation ID"),
         input: z.record(z.unknown()).describe('Validation update (e.g. { "status": 3, "comment_validation": "Approved" })'),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -425,7 +459,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "List all team members (requester, assigned, observer, etc.) of an ITIL item.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
       }),
       outputSchema: z.object({}).passthrough(),
     },
@@ -439,7 +473,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Add a user, group or supplier as a team member to an ITIL item.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
+        itemId: itemIdSchema("Item ID"),
         input: z.record(z.unknown()).describe(
           'Member data (e.g. { "itemtype": "User", "items_id": 5, "type": 1 } where type 1=requester, 2=assigned, 3=observer)',
         ),
@@ -458,8 +492,8 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Remove a team member from an ITIL item.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
-        itemId: z.union([z.string(), z.number()]).describe("Item ID"),
-        memberId: z.union([z.string(), z.number()]).describe("Team member ID"),
+        itemId: itemIdSchema("Item ID"),
+        memberId: itemIdSchema("Team member ID"),
       }),
       outputSchema: z.object({}).passthrough(),
     },
@@ -489,7 +523,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get user",
       description: "Retrieve a single user by ID.",
-      inputSchema: z.object({ userId: z.union([z.string(), z.number()]).describe("User ID") }),
+      inputSchema: z.object({ userId: itemIdSchema("User ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ userId }) => jsonResult(await getUser(config, userId))),
@@ -499,7 +533,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_get_me",
     {
       title: "Get current user",
-      description: "Retrieve the currently authenticated user's profile.",
+      description: "Retrieve the currently authenticated user's profile (who \"me\" is: id, login, names).",
       inputSchema: z.object({}),
       outputSchema: z.object({}).passthrough(),
     },
@@ -525,7 +559,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update user",
       description: "Update an existing user by ID.",
       inputSchema: z.object({
-        userId: z.union([z.string(), z.number()]).describe("User ID"),
+        userId: itemIdSchema("User ID"),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -553,7 +587,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get group",
       description: "Retrieve a single group by ID.",
-      inputSchema: z.object({ groupId: z.union([z.string(), z.number()]).describe("Group ID") }),
+      inputSchema: z.object({ groupId: itemIdSchema("Group ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ groupId }) => jsonResult(await getGroup(config, groupId))),
@@ -592,7 +626,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get KB article",
       description: "Retrieve a single knowledge base article by ID.",
-      inputSchema: z.object({ articleId: z.union([z.string(), z.number()]).describe("Article ID") }),
+      inputSchema: z.object({ articleId: itemIdSchema("Article ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ articleId }) => jsonResult(await getKBArticle(config, articleId))),
@@ -617,7 +651,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       title: "Update KB article",
       description: "Update an existing knowledge base article by ID.",
       inputSchema: z.object({
-        articleId: z.union([z.string(), z.number()]).describe("Article ID"),
+        articleId: itemIdSchema("Article ID"),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: z.object({}).passthrough(),
@@ -643,7 +677,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get KB category",
       description: "Retrieve a single knowledge base category by ID.",
-      inputSchema: z.object({ categoryId: z.union([z.string(), z.number()]).describe("Category ID") }),
+      inputSchema: z.object({ categoryId: itemIdSchema("Category ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ categoryId }) => jsonResult(await getKBCategory(config, categoryId))),
@@ -669,7 +703,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get ITIL category",
       description: "Retrieve a single ITIL category by ID.",
-      inputSchema: z.object({ categoryId: z.union([z.string(), z.number()]).describe("Category ID") }),
+      inputSchema: z.object({ categoryId: itemIdSchema("Category ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ categoryId }) => jsonResult(await getITILCategory(config, categoryId))),
@@ -717,7 +751,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Get document",
       description: "Retrieve document metadata by ID.",
-      inputSchema: z.object({ documentId: z.union([z.string(), z.number()]).describe("Document ID") }),
+      inputSchema: z.object({ documentId: itemIdSchema("Document ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ documentId }) => jsonResult(await getDocument(config, documentId))),
@@ -741,7 +775,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "Download document",
       description: "Download a document by ID. Returns the file content (may be base64 or raw text depending on type).",
-      inputSchema: z.object({ documentId: z.union([z.string(), z.number()]).describe("Document ID") }),
+      inputSchema: z.object({ documentId: itemIdSchema("Document ID") }),
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ documentId }) => jsonResult(await downloadDocument(config, documentId))),
@@ -788,7 +822,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       description: "Retrieve a single rule by collection and ID.",
       inputSchema: z.object({
         collection: z.string().describe("Rule collection name"),
-        ruleId: z.union([z.string(), z.number()]).describe("Rule ID"),
+        ruleId: itemIdSchema("Rule ID"),
       }),
       outputSchema: z.object({}).passthrough(),
     },

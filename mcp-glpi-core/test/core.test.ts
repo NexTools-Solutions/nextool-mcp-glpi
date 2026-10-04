@@ -84,6 +84,9 @@ describe("tool results", () => {
 
   it("flags errors", () => {
     assert.equal(errorResult("nope").isError, true);
+    // No structuredContent: validating clients check it against the outputSchema even on errors.
+    assert.equal(errorResult("nope").structuredContent, undefined);
+    assert.match(errorResult("nope").content[0].text, /"error": "nope"/);
     assert.equal(toolResult("hi").isError, false);
   });
 });

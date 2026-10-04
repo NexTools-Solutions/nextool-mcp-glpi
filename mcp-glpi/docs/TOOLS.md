@@ -1,7 +1,7 @@
 # MCP GLPI — Tools Reference
 
-**Version:** 2.1.0 | **Tools:** 110 (59 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
-**Last updated:** 2026-08-31 — generated from the running server (`tools/list`), not by hand.
+**Version:** 3.4.0 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
+**Last updated:** 2026-10-04 — generated from the running server (`tools/list`), not by hand.
 
 Every tool is prefixed with `glpi_`. The **Kind** column is the MCP annotation the server
 publishes (`readOnlyHint` / `destructiveHint`) and also what the write policy enforces.
@@ -27,12 +27,14 @@ Read tools take two extra parameters:
 | Parameter | Values | Default | Effect |
 |-----------|--------|---------|--------|
 | `fields` | `essential`, `all` | `essential` | `essential` drops GLPI's internal bookkeeping (SLA/OLA counters, delay stats, HAL links) and flattens TinyMCE richtext to plain text. `all` returns the raw payload |
-| `format` | `json`, `markdown` | `json` | `markdown` renders listings as a table. `structuredContent` stays a parseable object either way |
+| `format` | `json`, `markdown` | `json` | `markdown` renders listings as a table and one item as `key: value` lines, in the text block and in `structuredContent` (`{data: "<markdown>", format: "markdown"}`) |
 
 | Env var | Default | Effect |
 |---------|---------|--------|
 | `GLPI_DEFAULT_PAGE_SIZE` | `25` | Applied when no `range`/`limit` is given |
-| `GLPI_MAX_PAGE_SIZE` | `200` | Hard ceiling per call; the payload carries a note when it truncates |
+| `GLPI_MAX_PAGE_SIZE` | `100` | Hard ceiling per call; the payload carries a note when it truncates |
+| `GLPI_MAX_RESPONSE_CHARS` | `50000` | Character budget of one answer; a longer listing is trimmed and the note gives the next page |
+| `GLPI_LIST_TEXT_MAX_CHARS` | `300` | Texts longer than this are cut in listings (not in ticket history listings) |
 
 ## Resources
 
@@ -58,12 +60,13 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 ## Tools
 
-### Tickets (4)
+### Tickets (5)
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_tickets` | read | List GLPI tickets with optional pagination and dropdown expansion. |
-| `glpi_get_ticket` | read | Retrieve a single ticket by ID. |
+| `glpi_list_tickets` | read | List GLPI tickets of the whole instance (every ticket the connected user may see), most recently updated first by default. Filter by status (e.g. status: 'open' = not solved nor closed) and choose the sort column and direction. For the connected user's OWN tickets ("my tickets") use glpi_list_my_tickets instead. |
+| `glpi_list_my_tickets` | read | "My tickets": tickets of the connected GLPI user (or of users_id) where they are requester, assigned technician or observer. Defaults: open tickets only (not solved nor closed), most recently updated first. Each row names the people: requesters, assigned and observers as {id, name}, plus status_name and my_roles. Use this for "meus chamados", "my open tickets", "tickets assigned to me". |
+| `glpi_get_ticket` | read | Retrieve a single ticket by ID. IDs come with names beside them (recipient_name, category_name, entity_name, status_name, type_name...). Requesters, technicians and observers are not ticket fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups). |
 | `glpi_create_ticket` | write | Create a new ticket. Common fields: name (title), content (description), entities_id, users_id_requester, itilcategories_id, type (1=Incident, 2=Request), urgency, impact, priority. |
 | `glpi_update_ticket` | write | Update an existing ticket by ID. |
 
@@ -71,10 +74,10 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_ticket_users` | read | List all users linked to a ticket (requesters, observers, assigned). type: 1=Requester, 2=Assigned, 3=Observer. |
+| `glpi_list_ticket_users` | read | List all users linked to a ticket (requesters, observers, assigned), with each person's name (user_name) beside users_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_add_ticket_user` | write | Add a user to a ticket as requester, observer, or assigned. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_delete_ticket_user` | destructive | Remove a user-ticket link by Ticket_User ID (get the ID from glpi_list_ticket_users). |
-| `glpi_list_ticket_groups` | read | List all groups linked to a ticket (requester, observer, assigned). type: 1=Requester, 2=Assigned, 3=Observer. |
+| `glpi_list_ticket_groups` | read | List all groups linked to a ticket (requester, observer, assigned), with each group's name (group_name) beside groups_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_add_ticket_group` | write | Add a group to a ticket as requester, observer, or assigned. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_delete_ticket_group` | destructive | Remove a group-ticket link by Group_Ticket ID (get the ID from glpi_list_ticket_groups). |
 
@@ -82,15 +85,15 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_change_followups` | read | List followups (comments) of a change. |
-| `glpi_list_problem_followups` | read | List followups (comments) of a problem. |
+| `glpi_list_change_followups` | read | List followups (comments) of a change, with the author's name (user_name). |
+| `glpi_list_problem_followups` | read | List followups (comments) of a problem, with the author's name (user_name). |
 | `glpi_add_followup` | write | Add a comment/followup to a ticket. |
-| `glpi_list_followups` | read | List followups (comments) of a ticket. |
+| `glpi_list_followups` | read | List followups (comments) of a ticket, oldest first, with the author's name (user_name). |
 | `glpi_add_solution` | write | Add a solution to a ticket (status changes to Solved). |
-| `glpi_list_ticket_tasks` | read | List tasks (to-do items) for a ticket. |
+| `glpi_list_ticket_tasks` | read | List tasks (to-do items) for a ticket, with author, technician and group names (user_name, tech_name, tech_group_name). |
 | `glpi_add_ticket_task` | write | Add a task to a ticket. Fields: tickets_id, content (required). Optional: is_private (0/1), state (0=Info, 1=To do, 2=Done), actiontime (seconds), users_id_tech (assigned technician). |
-| `glpi_list_change_tasks` | read | List tasks for a change. |
-| `glpi_list_problem_tasks` | read | List tasks for a problem. |
+| `glpi_list_change_tasks` | read | List tasks for a change, with author, technician and group names. |
+| `glpi_list_problem_tasks` | read | List tasks for a problem, with author, technician and group names. |
 | `glpi_add_change_followup` | write | Add a comment/followup to a change. |
 | `glpi_add_problem_followup` | write | Add a comment/followup to a problem. |
 | `glpi_add_change_solution` | write | Add a solution to a change (status changes to Solved). |
@@ -100,13 +103,13 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_timeline` | read | Followups, tasks, solutions and validations of a ticket, change or problem, merged into one chronological list (oldest first). Replaces calling the four list tools separately and interleaving them by hand. |
+| `glpi_list_timeline` | read | Followups, tasks, solutions and validations of a ticket, change or problem, merged into one chronological list (oldest first; order 'desc' for the latest first), with the people's names (user_name, tech_name, validator_name) and the solution type name. Replaces calling the four list tools separately and interleaving them by hand. |
 
 ### Validations (4)
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_ticket_validations` | read | List approval/validation requests for a ticket. |
+| `glpi_list_ticket_validations` | read | List approval/validation requests for a ticket, with requester and approver names (user_name, validator_name) and status_name (None, Waiting, Accepted, Refused). |
 | `glpi_create_ticket_validation` | write | Create an approval request assigning a validator (users_id_validate). |
 | `glpi_update_ticket_validation` | write | Approve/refuse a validation (status: accepted/refused) or change the approver. |
 | `glpi_delete_ticket_validation` | destructive | Remove a validation request by ID. |
@@ -115,7 +118,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_changes` | read | List change management items with optional pagination. |
+| `glpi_list_changes` | read | List change management items, most recently updated first by default. |
 | `glpi_get_change` | read | Retrieve a change by ID. |
 | `glpi_create_change` | write | Create a new change. Common fields: name, content, entities_id, users_id_requester. |
 | `glpi_update_change` | write | Update an existing change by ID. |
@@ -124,7 +127,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_problems` | read | List problem management items with optional pagination. |
+| `glpi_list_problems` | read | List problem management items, most recently updated first by default. |
 | `glpi_get_problem` | read | Retrieve a problem by ID. |
 | `glpi_create_problem` | write | Create a new problem. Common fields: name, content, entities_id, users_id_requester. |
 | `glpi_update_problem` | write | Update an existing problem by ID. |
@@ -133,11 +136,11 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, etc. Use glpi_list_search_options to discover available fields for each itemtype. |
-| `glpi_search_user_by_email` | read | Search for a user by email address. |
+| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = contains \| equals \| notequals \| lessthan \| morethan \| under, link = AND \| OR (omit on the first). Rows come keyed by search option ID ('1' = name, '2' = id on most itemtypes); named_columns=true keys them by option name instead. Use glpi_list_search_options to discover the option IDs. |
+| `glpi_search_user_by_email` | read | Find users by exact email address (returns the user items: id, login, real name, first name...). |
 | `glpi_list_search_options` | read | List available search fields for an itemtype. Critical for building search criteria with glpi_search. Returns field IDs, names, and types. |
 | `glpi_count_items` | read | Count matching items without transferring them — answers 'how many' in one cheap call. Use glpi_list_search_options to discover criteria field IDs. |
-| `glpi_get_ticket_stats` | read | Ticket counts per status (New, Processing, Pending, Solved, Closed) plus the total, without listing the tickets. Optional criteria narrow the scope (e.g. one entity). |
+| `glpi_get_ticket_stats` | read | Ticket counts per status (New, Processing, Pending, Solved, Closed) plus the total, without listing the tickets. Optional criteria narrow the scope, e.g. one entity: [{field: 80, searchtype: 'equals', value: <entity id>}] (Ticket search option IDs: 80 = entity, 4 = requester, 5 = technician, 7 = category; same criteria shape as glpi_search). |
 
 ### Assets and reservations (10)
 
@@ -164,7 +167,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 | `glpi_update_webhook` | write | Update a webhook definition by ID. |
 | `glpi_set_webhook_active` | write | Turn a webhook on or off without touching the rest of its definition. |
 | `glpi_delete_webhook` | destructive | Delete a webhook. Set purge to remove it permanently instead of trashing it. |
-| `glpi_list_webhook_deliveries` | read | Delivery queue (QueuedWebhook): what was sent, when, and what is still pending. Filter by webhook name, or only_failed to see what has been retried. |
+| `glpi_list_webhook_deliveries` | read | Delivery queue (QueuedWebhook): what was sent, when, and what is still pending, newest first. Filter by webhook name, or only_failed to see what has been retried. |
 | `glpi_retry_webhook_delivery` | write | Queue a failed delivery for another attempt by resetting its send time and retry counter. The GLPI cron does the actual sending — there is no immediate-send endpoint. |
 
 ### Users and groups (6)

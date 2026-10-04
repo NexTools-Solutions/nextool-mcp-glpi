@@ -140,7 +140,7 @@ describe("instanceFromConfig", () => {
   });
 
   it("exposes the release version", () => {
-    assert.equal(SERVER_VERSION, "3.3.1");
+    assert.equal(SERVER_VERSION, "3.4.0");
   });
 });
 
@@ -317,7 +317,7 @@ describe("v2 URL resolution", () => {
 describe("toolsets", () => {
   it("every tool belongs to at least one preset besides core, and presets name only real tools", async () => {
     const names = await allToolNames();
-    assert.equal(names.length, 165);
+    assert.equal(names.length, 166);
     const real = new Set(names);
     for (const [preset, def] of Object.entries(TOOLSETS)) {
       for (const t of def.tools) assert.ok(real.has(t), `${preset} lists unknown tool ${t}`);
@@ -413,7 +413,7 @@ describe("MCP annotations on every tool", () => {
     );
     const { tools } = await client.listTools();
     await client.close();
-    assert.equal(tools.length, 165);
+    assert.equal(tools.length, 166);
     for (const t of tools) {
       const a = t.annotations;
       assert.ok(a, `${t.name} has no annotations`);

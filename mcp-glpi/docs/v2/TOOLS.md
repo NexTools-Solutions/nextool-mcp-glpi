@@ -26,7 +26,7 @@ API path: `/Assistance/Ticket`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_tickets` | List tickets via /Assistance/Ticket. Supports RSQL filter, pagination and sorting. |
+| `glpi_v2_list_tickets` | List tickets via /Assistance/Ticket, most recently updated first by default. Filter by status (status: 'open' = not solved nor closed) and/or an RSQL filter; each ticket carries its team (requester, assigned, observer) with names. The v2 API cannot filter on the team, so this tool cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled. |
 | `glpi_v2_get_ticket` | Retrieve a single ticket by ID. |
 | `glpi_v2_create_ticket` | Create a new ticket. Fields: name (required), content, type, priority, urgency, impact, etc. |
 | `glpi_v2_update_ticket` | Update an existing ticket by ID. |
@@ -40,7 +40,7 @@ API path: `/Assistance/Change`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_changes` | List change requests via /Assistance/Change. Supports RSQL filter, pagination and sorting. |
+| `glpi_v2_list_changes` | List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting. |
 | `glpi_v2_get_change` | Retrieve a single change by ID. |
 | `glpi_v2_create_change` | Create a new change request. |
 | `glpi_v2_update_change` | Update an existing change by ID. |
@@ -53,7 +53,7 @@ API path: `/Assistance/Problem`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_problems` | List problems via /Assistance/Problem. Supports RSQL filter, pagination and sorting. |
+| `glpi_v2_list_problems` | List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting. |
 | `glpi_v2_get_problem` | Retrieve a single problem by ID. |
 | `glpi_v2_create_problem` | Create a new problem. |
 | `glpi_v2_update_problem` | Update an existing problem by ID. |
@@ -86,7 +86,7 @@ All team member tools accept `itemtype` (`Ticket`, `Change`, or `Problem`) and `
 | Tool | Description |
 |------|-------------|
 | `glpi_v2_list_team_members` | List all team members (requester, assigned, observer, etc.) of an ITIL item. |
-| `glpi_v2_add_team_member` | Add a user, group or supplier as a team member to an ITIL item. Member types: 1=requester, 2=assigned, 3=observer. |
+| `glpi_v2_add_team_member` | Add a user, group or supplier as a team member to an ITIL item. |
 | `glpi_v2_remove_team_member` | Remove a team member from an ITIL item. |
 
 ---
@@ -99,7 +99,7 @@ API path: `/Administration/User`
 |------|-------------|
 | `glpi_v2_list_users` | List users via /Administration/User. Supports RSQL filter, pagination and sorting. |
 | `glpi_v2_get_user` | Retrieve a single user by ID. |
-| `glpi_v2_get_me` | Retrieve the currently authenticated user's profile. |
+| `glpi_v2_get_me` | Retrieve the currently authenticated user's profile (who "me" is: id, login, names). |
 | `glpi_v2_create_user` | Create a new user. |
 | `glpi_v2_update_user` | Update an existing user by ID. |
 

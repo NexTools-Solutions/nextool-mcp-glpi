@@ -70,11 +70,12 @@ export const TICKET_TYPE_MAP = { 1: "Incident", 2: "Request" } as const;
 
 export const ACTOR_TYPE_MAP = { 1: "Requester", 2: "Assigned", 3: "Observer" } as const;
 
+/** CommonITILValidation: NONE=1, WAITING=2, ACCEPTED=3, REFUSED=4 (the map before 3.4.0 was shifted). */
 export const VALIDATION_STATUS_MAP = {
-  1: "Waiting",
-  2: "Granted",
-  3: "Refused",
-  4: "None",
+  1: "None",
+  2: "Waiting",
+  3: "Accepted",
+  4: "Refused",
 } as const;
 
 /** Keeps only the fields an agent needs to pick an option from a catalogue. */

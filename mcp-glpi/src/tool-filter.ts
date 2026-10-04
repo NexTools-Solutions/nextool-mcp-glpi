@@ -6,7 +6,7 @@
  * Otherwise a tool is selected when it belongs to one of the toolsets OR
  * matches an include glob (the two add up). Exclude globs always win.
  *
- * With both API families on, the server has 165 tools; most clients only need
+ * With both API families on, the server has 166 tools; most clients only need
  * a slice of them, and every registered tool costs context in each session.
  * Like the write policy, this wraps `server.registerTool` once instead of
  * touching the call sites.
@@ -24,6 +24,8 @@ export interface ToolFilterOptions {
 export interface ToolFilterStats {
   registered(): number;
   dropped(): number;
+  /** Was this tool actually registered (selected and its family on)? */
+  has(name: string): boolean;
 }
 
 /** "glpi_*ticket*, glpi_search" -> anchored regexes (`*` = any run of characters). */
@@ -45,15 +47,15 @@ export function isToolSelected(name: string, options: ToolFilterOptions): boolea
 export function installToolFilter(server: object, options: ToolFilterOptions): ToolFilterStats {
   const target = server as { registerTool: (name: string, ...rest: unknown[]) => unknown };
   const original = target.registerTool.bind(target);
-  let registered = 0;
+  const names = new Set<string>();
   let dropped = 0;
   target.registerTool = (name: string, ...rest: unknown[]) => {
     if (!isToolSelected(name, options)) {
       dropped++;
       return undefined;
     }
-    registered++;
+    names.add(name);
     return original(name, ...rest);
   };
-  return { registered: () => registered, dropped: () => dropped };
+  return { registered: () => names.size, dropped: () => dropped, has: (name) => names.has(name) };
 }

@@ -195,6 +195,10 @@ const ALWAYS_DROP: RegExp[] = [
   /^begin_waiting_date$/,
   /^internal_time_to_/,
   /^validation_percent$/,
+  // API v2 statistics (resolution_duration, take_into_account_duration, ...) and
+  // internal OLA dates; v2 payloads have no per-itemtype whitelist.
+  /_duration$/,
+  /^internal_/,
 ];
 
 function isDropped(key: string): boolean {
@@ -204,10 +208,18 @@ function isDropped(key: string): boolean {
 /**
  * Applies the whitelist (or the generic blocklist) and flattens richtext.
  *
- * Keys starting with `_` survive the whitelist: those are the apirest
- * relational expansions (`_devices`, `_disks`, `_softwares`, `_networkports`),
- * which the caller only receives when they explicitly asked for them.
+ * Some keys survive any whitelist:
+ *   - keys starting with `_`: the apirest relational expansions (`_devices`,
+ *     `_disks`, `_softwares`, `_networkports`), only present when asked for;
+ *   - keys ending with `_name` (`user_name`, `status_name`, ...): names the
+ *     server resolved next to an ID, so people and dropdowns read as words;
+ *   - purely numeric keys: the columns of a GLPI search result, keyed by
+ *     search option ID (a whitelist of field names would drop every one).
  */
+function alwaysKept(key: string): boolean {
+  return key.startsWith("_") || key.endsWith("_name") || /^\d+$/.test(key);
+}
+
 export function pickFields(
   itemtype: string | undefined,
   obj: Record<string, unknown>,
@@ -219,7 +231,7 @@ export function pickFields(
   const out: Record<string, unknown> = {};
 
   for (const [k, v] of Object.entries(obj)) {
-    const keep = whitelist ? whitelist.includes(k) || k.startsWith("_") : !isDropped(k);
+    const keep = whitelist ? whitelist.includes(k) || alwaysKept(k) : !isDropped(k);
     if (!keep) continue;
     out[k] = typeof v === "string" && RICHTEXT_FIELDS.has(k) ? stripHtml(v) : v;
   }
@@ -251,9 +263,44 @@ export function formatPayload(itemtype: string | undefined, data: unknown, mode:
 
 const MAX_CELL = 80;
 
-function cell(value: unknown): string {
+/**
+ * `{id, name}` (the shape API v2 uses for every relation, and the one the v1
+ * tools use for resolved actors) reads as "name (id)"; arrays of them as a
+ * comma list. Anything else stays JSON.
+ */
+function compactValue(value: unknown): string {
   if (value === null || value === undefined) return "";
-  let s = typeof value === "object" ? JSON.stringify(value) : String(value);
+  if (Array.isArray(value)) {
+    if (value.every((v) => typeof v !== "object" || v === null || isNamedRef(v))) {
+      return value.map((v) => compactValue(v)).join(", ");
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "object") {
+    if (isNamedRef(value)) {
+      const ref = value as Record<string, unknown>;
+      const label = String(ref.display_name ?? ref.completename ?? ref.name ?? "");
+      const role = typeof ref.role === "string" ? `${ref.role}: ` : "";
+      return ref.id !== undefined && ref.id !== null && !label.includes(`(${String(ref.id)})`)
+        ? `${role}${label} (${String(ref.id)})`
+        : `${role}${label}`;
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function isNamedRef(v: unknown): boolean {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    ["name", "display_name", "completename"].some((k) => typeof o[k] === "string") &&
+    Object.values(o).every((x) => typeof x !== "object" || x === null)
+  );
+}
+
+function cell(value: unknown): string {
+  let s = compactValue(value);
   s = s.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
   return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL - 1)}…` : s;
 }
@@ -261,6 +308,8 @@ function cell(value: unknown): string {
 /**
  * Renders rows as a markdown table. Columns come from the union of the keys
  * present, in first-seen order, so a sparse row does not lose its data.
+ * Long cells are cut at 80 characters: a table is for scanning a listing;
+ * open the item (or ask for JSON) to read a long text in full.
  */
 export function toMarkdownTable(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "_No results._";
@@ -276,6 +325,19 @@ export function toMarkdownTable(rows: Record<string, unknown>[]): string {
   return [header, divider, ...body].join("\n");
 }
 
+/**
+ * A single item as `**key**: value` lines. Values are never cut (this is how
+ * one ticket is read); a multi-line text starts on its own line, indented.
+ */
+function renderObject(obj: Record<string, unknown>): string {
+  return Object.entries(obj)
+    .map(([k, v]) => {
+      const s = compactValue(v).trim();
+      return s.includes("\n") ? `**${k}**:\n${s.replace(/^/gm, "  ")}` : `**${k}**: ${s}`;
+    })
+    .join("\n");
+}
+
 /** Renders a payload as markdown; falls back to JSON for non-tabular shapes. */
 export function renderMarkdown(data: unknown): string {
   if (Array.isArray(data)) {
@@ -286,8 +348,7 @@ export function renderMarkdown(data: unknown): string {
     return JSON.stringify(data, null, 2);
   }
   if (typeof data === "object" && data !== null) {
-    const entries = Object.entries(data as Record<string, unknown>);
-    return entries.map(([k, v]) => `**${k}**: ${cell(v)}`).join("\n");
+    return renderObject(data as Record<string, unknown>);
   }
   return String(data);
 }

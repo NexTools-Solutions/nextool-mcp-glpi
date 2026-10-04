@@ -1,7 +1,7 @@
 {
   "name": "@nextoolsolutions/mcp-glpi",
-  "version": "3.3.1",
-  "description": "MCP server for GLPI (service desk / ITSM): 165 GLPI tools for tickets, ITIL problems and changes, assets and inventory, knowledge base, users, rules and webhooks. GLPI 10 and 11, REST API v1 + GLPI 11 API v2 (OAuth2). Not affiliated with Teclib'.",
+  "version": "3.4.0",
+  "description": "MCP server for GLPI (service desk / ITSM): 166 GLPI tools for tickets, ITIL problems and changes, assets and inventory, knowledge base, users, rules and webhooks. GLPI 10 and 11, REST API v1 + GLPI 11 API v2 (OAuth2). Not affiliated with Teclib'.",
   "type": "module",
   "main": "dist/lib.js",
   "types": "dist/lib.d.ts",
@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.0",
-    "@nextoolsolutions/mcp-glpi-core": "^1.1.0",
+    "@nextoolsolutions/mcp-glpi-core": "^1.2.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

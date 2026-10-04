@@ -11,6 +11,12 @@
  * presets (no webhook/rule/session internals) plus the non-destructive ticket
  * operations (create/update ticket, followup, solution, task, validation,
  * actors).
+ *
+ * Self-contained presets (asserted by the test suite): a tool named in the
+ * description or parameters of another tool is in every preset that holds
+ * the tool naming it — a preset never sends the model after a tool it lacks.
+ * Each domain preset therefore carries the reads it points to: generic search
+ * and its option catalogue, and the user/group reads that turn IDs into names.
  */
 
 import { classifyTool } from "@nextoolsolutions/mcp-glpi-core";
@@ -25,7 +31,7 @@ export interface ToolsetDefinition {
 }
 
 const TICKETS = [
-  "glpi_list_tickets", "glpi_get_ticket", "glpi_create_ticket", "glpi_update_ticket",
+  "glpi_list_tickets", "glpi_list_my_tickets", "glpi_get_ticket", "glpi_create_ticket", "glpi_update_ticket",
   "glpi_add_followup", "glpi_list_followups", "glpi_add_solution", "glpi_list_timeline",
   "glpi_list_ticket_validations", "glpi_create_ticket_validation", "glpi_update_ticket_validation",
   "glpi_delete_ticket_validation", "glpi_list_ticket_users", "glpi_add_ticket_user",
@@ -90,6 +96,15 @@ const USERS = [
 
 const SEARCH = ["glpi_search", "glpi_count_items", "glpi_list_search_options"] as const;
 
+/** Generic search and the option catalogue its criteria need. */
+const SEARCH_READS = ["glpi_search", "glpi_list_search_options"] as const;
+
+/** Reads that put a name on a person or a group (IDs in tickets, tasks, followups). */
+const PEOPLE_READS = [
+  "glpi_get_user", "glpi_search_user_by_email", "glpi_list_users", "glpi_get_group", "glpi_list_groups",
+  "glpi_v2_get_user", "glpi_v2_get_me", "glpi_v2_get_group",
+] as const;
+
 /** Entity reads an agent needs to compose a ticket; also part of `admin`. */
 const ENTITY_READS = [
   "glpi_list_entities", "glpi_get_entity", "glpi_get_my_entities", "glpi_get_my_profiles",
@@ -120,7 +135,7 @@ function unique(names: readonly string[]): string[] {
 
 /** core = reads of the everyday presets + non-destructive ticket operations. */
 const CORE = unique([
-  ...[...TICKETS, ...ITIL, ...ASSETS, ...KB, ...DOCUMENTS, ...USERS, ...SEARCH, ...ENTITY_READS].filter(
+  ...[...TICKETS, ...ITIL, ...ASSETS, ...KB, ...DOCUMENTS, ...USERS, ...SEARCH, ...PEOPLE_READS, ...ENTITY_READS].filter(
     (name) => classifyTool(name) === "read",
   ),
   ...TICKETS.filter((name) => classifyTool(name) === "write"),
@@ -131,9 +146,17 @@ export const TOOLSETS: Readonly<Record<string, ToolsetDefinition>> = {
     description: "Lean default: every read tool of the everyday presets plus the non-destructive ticket operations",
     tools: CORE,
   },
-  tickets: { description: "Ticket lifecycle: followups, solutions, tasks, validations, actors, timeline", tools: unique(TICKETS) },
-  itil: { description: "Problems and changes (plus the shared ITIL timeline and categories)", tools: unique(ITIL) },
-  assets: { description: "Assets, reservations and locations", tools: unique(ASSETS) },
+  tickets: {
+    description:
+      "Ticket lifecycle (my tickets, followups, solutions, tasks, validations, actors, timeline) plus the search and " +
+      "user/group reads it points to",
+    tools: unique([...TICKETS, ...SEARCH_READS, ...PEOPLE_READS]),
+  },
+  itil: {
+    description: "Problems and changes (plus the shared ITIL timeline and categories, and the user/group reads)",
+    tools: unique([...ITIL, ...PEOPLE_READS]),
+  },
+  assets: { description: "Assets, reservations and locations (plus generic search)", tools: unique([...ASSETS, ...SEARCH_READS]) },
   kb: { description: "Knowledge base articles and categories", tools: unique(KB) },
   documents: { description: "Documents and their links to items", tools: unique(DOCUMENTS) },
   users: { description: "Users and groups", tools: unique(USERS) },
