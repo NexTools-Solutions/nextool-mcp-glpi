@@ -140,7 +140,7 @@ describe("instanceFromConfig", () => {
   });
 
   it("exposes the release version", () => {
-    assert.equal(SERVER_VERSION, "3.5.0");
+    assert.equal(SERVER_VERSION, "3.5.1");
   });
 });
 

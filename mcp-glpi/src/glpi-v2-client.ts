@@ -74,6 +74,11 @@ function tokenKey(config: GlpiV2Config): string {
   return credentialKey("v2", trimSlash(config.baseUrl), config.clientId, config.clientSecret, config.username, config.password, config.scope);
 }
 
+/** Cache key of a v2 credential (URL + client + user): per-credential caches outside this module use it. */
+export function v2CredentialKey(config: GlpiV2Config): string {
+  return tokenKey(config);
+}
+
 function validToken(config: GlpiV2Config): string | null {
   const entry = accessTokens.get(tokenKey(config));
   return entry && Date.now() < entry.expiresAt ? entry.token : null;

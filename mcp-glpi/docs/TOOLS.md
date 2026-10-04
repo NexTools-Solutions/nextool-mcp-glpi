@@ -1,6 +1,6 @@
 # MCP GLPI — Tools Reference
 
-**Version:** 3.5.0 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
+**Version:** 3.5.1 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
 **Last updated:** 2026-10-04 — generated from the running server (`tools/list`), not by hand.
 
 Every tool is prefixed with `glpi_`. The **Kind** column is the MCP annotation the server
@@ -20,6 +20,8 @@ publishes (`readOnlyHint` / `destructiveHint`) and also what the write policy en
 Labels of GLPI codes (`status_name`, `type_name`, `priority_name`, `urgency_name`, `impact_name`, the actor
 `type_name`, the validation `status_name`) follow the language of the GLPI session (`glpilanguage`): GLPI's own
 texts in pt_BR, pt_PT, es_ES, fr_FR, it_IT, de_DE, English otherwise — the same labels the API v2 returns.
+`glpi_search` (named columns) puts the label in coded columns and the code under `"<name> (id)"`
+(`"Status": "Solucionado", "Status (id)": 5`).
 
 Instances pointing at a production GLPI that nobody should change through an assistant should run
 with `GLPI_READ_ONLY=true`.
@@ -140,7 +142,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = contains \| equals \| notequals \| lessthan \| morethan \| under, link = AND \| OR (omit on the first). Rows come keyed by the search option names in the GLPI user's language ('Título', 'ID', 'Status'...); named_columns=false keys them by option ID ('1', '2'...) instead. Use glpi_list_search_options to discover the option IDs for criteria, forcedisplay and sort. |
+| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = contains \| equals \| notequals \| lessthan \| morethan \| under, link = AND \| OR (omit on the first). Rows come keyed by the search option names in the GLPI user's language ('Título', 'ID', 'Status'...); coded columns (status, priority, urgency, impact, type, approval) hold the GLPI label and the code sits beside it as '<name> (id)' (e.g. 'Status': 'Solucionado', 'Status (id)': 5). named_columns=false returns the raw search keyed by option ID ('1', '2'...). Use glpi_list_search_options to discover the option IDs for criteria, forcedisplay and sort. |
 | `glpi_search_user_by_email` | read | Find users by exact email address (returns the user items: id, login, real name, first name...). |
 | `glpi_list_search_options` | read | List available search fields for an itemtype. Critical for building search criteria with glpi_search. Returns field IDs, names, and types. |
 | `glpi_count_items` | read | Count matching items without transferring them — answers 'how many' in one cheap call. Use glpi_list_search_options to discover criteria field IDs. |

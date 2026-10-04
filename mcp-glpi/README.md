@@ -118,9 +118,20 @@ regional variant uses its family (es_MX → es_ES), anything else GLPI's English
 v1 tools always answered in English ("Solved") while the v2 ones answered in the GLPI language
 ("Solucionado").
 
+The API v2 labels the status itself but sends priority, urgency, impact and the ticket type as
+numbers. Since 3.5.1 the v2 ticket/change/problem tools add `priority_name`, `urgency_name`,
+`impact_name` (and `type_name` on tickets) beside the codes, in the language whose status table
+matches the status labels the API returned (the v2 session carries no language); the timeline adds
+`status_name` to validations and solutions and `state_name` to tasks, with the language cached per
+credential (or read from one ticket). English when nothing matches.
+
 `glpi_search` keys its rows by search option **name** in the GLPI user's language (`"Título"`,
 `"Status"`, `"Última atualização"`) by default since 3.5.0; `named_columns: false` returns the
-numeric option IDs (`"1"`, `"12"`, `"19"`).
+numeric option IDs (`"1"`, `"12"`, `"19"`). Since 3.5.1 coded columns (status, priority, urgency,
+impact, ticket type, approval and solution-approval status) hold the label in the session language
+and the code sits beside it under `"<name> (id)"`: `"Status": "Solucionado", "Status (id)": 5`.
+A column is labelled only when its search option points at a known table/field; the markdown table
+leaves the `(id)` columns out, and `named_columns: false` stays the raw search.
 
 Full reference: [`docs/TOOLS.md`](docs/TOOLS.md) (v1) and [`docs/v2/TOOLS.md`](docs/v2/TOOLS.md) (v2);
 OAuth2 setup in [`docs/v2/SETUP.md`](docs/v2/SETUP.md).
@@ -295,7 +306,7 @@ kind of listing has its own column set (`src/markdown-views.ts`):
 |---------|---------|
 | tickets (`glpi_list_tickets`, `glpi_list_my_tickets`, `glpi_v2_list_tickets`) | id, title, status, category, requester, technician, priority, updated |
 | problems, changes (v1 and v2) | id, title, status, category, (v2: technician), priority, updated |
-| timeline (`glpi_list_timeline`, `glpi_v2_list_timeline`) | type, id, date, author, summary — one line per entry |
+| timeline (`glpi_list_timeline`, `glpi_v2_list_timeline`) | type, id, date, author, summary — one line per entry (validations: status → approver · comment) |
 | followups / tasks | id, date, author, (tasks: technician), private, summary |
 | assets | id, name, serial, inventory number, status, location, user, updated |
 | users (v1 and v2) | id, login, name, active, last login |
@@ -350,7 +361,7 @@ schema error).
 - `src/labels.ts` — code labels per GLPI language and the session (user + language) cache
 - `src/markdown-views.ts` — compact markdown columns per kind of listing
 - `src/instructions.ts` — `instructions` built from the registered tools
-- `src/search-columns.ts` — search option names for `glpi_search` (`named_columns`, default on)
+- `src/search-columns.ts` — search option names for `glpi_search` (`named_columns`, default on) and labels of its coded columns
 - `src/ids.ts` — item ID schema
 - `src/resources.ts`, `src/prompts.ts` — MCP resources and prompts
 - `test/` — `npm test` (node --test, no extra dependency)

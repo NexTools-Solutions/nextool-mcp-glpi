@@ -510,7 +510,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = " +
         "contains | equals | notequals | lessthan | morethan | under, link = AND | OR (omit on the first). " +
         "Rows come keyed by the search option names in the GLPI user's language ('Título', 'ID', 'Status'...); " +
-        "named_columns=false keys them by option ID ('1', '2'...) instead. Use glpi_list_search_options to " +
+        "coded columns (status, priority, urgency, impact, type, approval) hold the GLPI label and the code " +
+        "sits beside it as '<name> (id)' (e.g. 'Status': 'Solucionado', 'Status (id)': 5). " +
+        "named_columns=false returns the raw search keyed by option ID ('1', '2'...). Use glpi_list_search_options to " +
         "discover the option IDs for criteria, forcedisplay and sort.",
       inputSchema: z.object({
         itemtype: z.string().describe("Item type, e.g. Ticket, User, Change, Problem"),
@@ -527,7 +529,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         named_columns: z
           .boolean()
           .optional()
-          .describe("Key each row by search option name (default true); false = by numeric option ID"),
+          .describe("Key each row by search option name, coded values labelled (default true); false = raw, by numeric option ID"),
       }),
       outputSchema: outRows(),
     },
@@ -541,7 +543,10 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       });
       const rows = Array.isArray(res?.data) ? res.data : [];
       const total = typeof res?.totalcount === "number" ? res.totalcount : rows.length;
-      const data = params.named_columns === false ? rows : await namedSearchRows(config, params.itemtype, rows);
+      const data =
+        params.named_columns === false
+          ? rows
+          : await namedSearchRows(config, params.itemtype, rows, rows.length ? await sessionLabels(config) : undefined);
       return jsonResult({ data, total });
     }),
   );

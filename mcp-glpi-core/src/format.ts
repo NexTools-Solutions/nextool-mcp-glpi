@@ -70,6 +70,41 @@ export const RICHTEXT_FIELDS = new Set([
   "long_text",
 ]);
 
+/**
+ * Richtext fields flattened for markdown: RICHTEXT_FIELDS plus the validation
+ * comments (v1 comment_submission / comment_validation, v2 submission_comment /
+ * approval_comment), which GLPI 11 also stores as HTML.
+ */
+export const MARKDOWN_RICHTEXT_FIELDS = new Set([
+  ...RICHTEXT_FIELDS,
+  "comment_submission",
+  "comment_validation",
+  "submission_comment",
+  "approval_comment",
+]);
+
+/**
+ * Flattens richtext fields to plain text at any depth up to `maxDepth` nested
+ * objects/arrays. `pickFields` only flattens the top level, so the API v2
+ * timeline (`{type, item: {content: "<p>…</p>"}}`) reached the markdown table
+ * as raw HTML. Used for markdown only: the JSON result keeps nested fields as
+ * GLPI sent them. Returns a copy; the input is not modified.
+ */
+export function flattenRichtext(value: unknown, maxDepth = 3): unknown {
+  const walk = (v: unknown, depth: number): unknown => {
+    if (Array.isArray(v)) return depth < maxDepth ? v.map((x) => walk(x, depth + 1)) : v;
+    if (typeof v !== "object" || v === null) return v;
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === "string" && MARKDOWN_RICHTEXT_FIELDS.has(k)) out[k] = stripHtml(x);
+      else if (typeof x === "object" && x !== null && depth < maxDepth) out[k] = walk(x, depth + 1);
+      else out[k] = x;
+    }
+    return out;
+  };
+  return walk(value, 0);
+}
+
 // ---------------------------------------------------------------------------
 // Field selection
 // ---------------------------------------------------------------------------
@@ -303,7 +338,8 @@ function isNamedRef(v: unknown): boolean {
 
 function cell(value: unknown): string {
   let s = compactValue(value);
-  s = s.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
+  // Line breaks (a flattened paragraph leaves "\n\n") become one space in a table cell.
+  s = s.replace(/[ \t]*(\r?\n)+[ \t]*/g, " ").replace(/\|/g, "\\|").trim();
   return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL - 1)}…` : s;
 }
 

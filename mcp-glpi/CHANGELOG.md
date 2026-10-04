@@ -4,6 +4,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-10-04
+
+Fixes from the live check of 3.5.0 (GLPI 11.0.7, API v1 and v2, user language pt_BR), read-only.
+
+### Fixed
+- **`glpi_v2_list_timeline` ignored `limit`:** the tool had no `start`/`limit` in its schema, so the
+  argument was dropped and every entry came back (`limit: 3` on a 6-entry ticket returned 6). It now
+  pages with `start`/`limit` (default 25, ceiling 100, like the other listings). The GLPI endpoint
+  ignores both parameters (checked live), so the page is cut from the full timeline; `total` gives
+  the number of entries and the note names the next page (`Next page: start=3 limit=3.`). A ticket
+  with more than 25 entries now needs a second page.
+- **`glpi_search` returned codes in coded columns** (`"Status": 5`). With named columns (the default)
+  status, priority, urgency, impact, ticket type, approval (`global_validation`, validation status)
+  and solution-approval status hold the label in the GLPI session language, and the code moves to a
+  sibling key `"<name> (id)"`: `"Status": "Solucionado", "Status (id)": 5`. Columns are matched by the
+  search option's table/field (a satisfaction "Tipo" is not a ticket type); multi-valued codes
+  (`"2$#$3"`) become a comma-separated list. The markdown table leaves the `(id)` columns out;
+  `named_columns: false` stays the raw search, and `glpi_list_my_tickets` and the other internal
+  searches, which read columns by number, are unaffected.
+- **API v2 priority as a number in the markdown table** (`| 3 |`). The v2 ticket, change and problem
+  tools (list and get) add `priority_name`, `urgency_name`, `impact_name` and, on tickets, `type_name`
+  beside the codes (JSON keeps the codes). The v2 session (`/api.php/v2/session`) carries no language
+  and `/Administration/User/Me` needs another scope, so the language is the one whose status table
+  matches the status labels the API returned (`{id: 5, name: "Solucionado"}` → pt_BR), cached per
+  credential; English (GLPI's msgids) when nothing matches. The ticket/problem/change tables use
+  `priority_name`.
+- **v2 timeline codes and validation row:** validations and solutions carry `status_name`, tasks
+  `state_name` (new `task_state` table: GLPI's Planning states "Information / To do / Done" and their
+  translations). Without a status at hand the cached language is used, or one ticket is read
+  (`/Assistance/Ticket?limit=1`) once per credential. The markdown validation row showed no author and
+  no summary (it read v1 field names); it now shows the requester and "status · → approver · comment".
+- **Raw HTML in the v2 timeline markdown** (`<p>Olá <strong></strong>, tudo bem?</p>…`): the core
+  flattened richtext only at the top level, and v2 entries nest it in `item`. Core 1.3.1 flattens
+  nested richtext (and the validation comments) for markdown; JSON keeps the HTML.
+
+### Dependencies
+- `@nextoolsolutions/mcp-glpi-core` `^1.3.1` (nested richtext flattened in markdown).
+
 ## [3.5.0] - 2026-10-04
 
 Polish from a real session with Claude: numbered search columns, labels in two languages, a

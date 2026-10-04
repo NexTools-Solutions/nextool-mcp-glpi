@@ -5,6 +5,15 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-10-04
+- `glpi_v2_list_timeline` honours `start`/`limit` (the endpoint ignores them; the page is cut by the
+  server) and returns `total`.
+- `glpi_search` labels coded columns in the GLPI language and keeps the code under `"<name> (id)"`.
+- API v2: `priority_name`, `urgency_name`, `impact_name`, `type_name` beside the codes (language taken
+  from the status labels the API returns); timeline `status_name`/`state_name`; markdown tables use
+  the labels.
+- Markdown shows nested richtext as text (v2 timeline summaries had raw HTML). Core 1.3.1.
+
 ## [3.5.0] - 2026-10-04
 - `glpi_search` returns column names (in the GLPI language) by default; `named_columns: false` for IDs.
 - v1 labels (status, type, priority, actor role, validation) in the GLPI session language, with GLPI's

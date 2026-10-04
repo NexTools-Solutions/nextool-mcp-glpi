@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   columnView,
   ESSENTIAL_FIELDS,
+  flattenRichtext,
   formatPayload,
   pickFields,
   renderMarkdown,
@@ -369,6 +370,44 @@ describe("installPayloadFormatting", () => {
 
     const json = (await handler({})) as { structuredContent: { data: Record<string, unknown>[] } };
     assert.equal(json.structuredContent.data[0].users_id_lastupdater, 368);
+  });
+
+  it("markdown flattens nested richtext (v2 timeline item.content); JSON and fields=all keep the HTML", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, {
+      ...FORMAT_OPTS,
+      markdownViews: {
+        glpi_v2_list_timeline: columnView([
+          { label: "type", from: "type" },
+          { label: "summary", from: (r) => (r.item as Record<string, unknown>).content ?? (r.item as Record<string, unknown>).submission_comment },
+        ]),
+      },
+    });
+    const rows = [
+      { type: "Followup", item: { id: 1, content: "<p>Olá <strong>Ana</strong>,</p>\n<p>tudo bem?</p>" } },
+      { type: "Validation", item: { id: 2, submission_comment: "<p>Aprovar &amp; seguir</p>" } },
+    ];
+    server.registerTool("glpi_v2_list_timeline", { inputSchema: fakeZodObject({ limit: {} }) }, async () => jsonToolResult(rows));
+    const handler = server.tools.get("glpi_v2_list_timeline")!.handler;
+
+    const md = ((await handler({ format: "markdown" })) as { content: { text: string }[] }).content[0].text;
+    assert.ok(md.includes("| Followup | Olá Ana, tudo bem? |"), md);
+    assert.ok(md.includes("| Validation | Aprovar & seguir |"), md);
+    assert.doesNotMatch(md, /<p>|<strong>/);
+
+    const all = ((await handler({ format: "markdown", fields: "all" })) as { content: { text: string }[] }).content[0].text;
+    assert.match(all, /<p>/);
+    const json = (await handler({})) as { structuredContent: { data: { item: { content?: string } }[] } };
+    assert.equal(json.structuredContent.data[0].item.content, rows[0].item.content);
+  });
+
+  it("flattenRichtext copies, reaches nested objects and arrays, and leaves other strings alone", () => {
+    const input = { name: "a <b> c", item: { content: "<p>x</p>", list: [{ comment: "<b>y</b>" }] } };
+    const out = flattenRichtext(input) as { name: string; item: { content: string; list: { comment: string }[] } };
+    assert.equal(out.name, "a <b> c");
+    assert.equal(out.item.content, "x");
+    assert.equal(out.item.list[0].comment, "y");
+    assert.equal(input.item.content, "<p>x</p>", "input untouched");
   });
 
   it("columnView takes the first non-empty candidate key and leaves a missing value blank", () => {

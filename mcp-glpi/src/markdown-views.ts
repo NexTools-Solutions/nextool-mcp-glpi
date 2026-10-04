@@ -11,6 +11,8 @@
  *
  * Column labels are English like the rest of the server's own vocabulary; the
  * VALUES (status, type, priority labels, names) are in the GLPI user's language.
+ * API v2 priorities read `priority_name`, which the v2 tools add beside the code
+ * in the language of the status labels the API returns (3.5.1).
  */
 
 import { columnView, type MarkdownColumn, type MarkdownView } from "@nextoolsolutions/mcp-glpi-core";
@@ -142,6 +144,16 @@ const V1_TASKS = columnView([
   col("summary", "content"),
 ]);
 
+/**
+ * glpi_search: its columns depend on the query, so the row is kept whole; only
+ * the "<name> (id)" codes beside a labelled column are left out of the table
+ * (the JSON, and fields=all, keep them).
+ */
+const V1_SEARCH: MarkdownView = (row) =>
+  Object.fromEntries(
+    Object.entries(row).filter(([k]) => !(k.endsWith(" (id)") && k.slice(0, -5) in row)),
+  );
+
 // ---------------------------------------------------------------------------
 // API v2 (relations are {id, name}; people of an ITIL item sit in `team`)
 // ---------------------------------------------------------------------------
@@ -153,7 +165,7 @@ const V2_TICKETS = columnView([
   col("category", pick("category")),
   col("requester", team("requester")),
   col("technician", team("assigned")),
-  col("priority", "priority"),
+  col("priority", ["priority_name", "priority"]),
   col("updated", "date_mod"),
 ]);
 
@@ -163,7 +175,7 @@ const V2_ITIL = columnView([
   col("status", pick("status")),
   col("category", pick("category")),
   col("technician", team("assigned")),
-  col("priority", "priority"),
+  col("priority", ["priority_name", "priority"]),
   col("updated", "date_mod"),
 ]);
 
@@ -191,14 +203,25 @@ const V2_TIMELINE = columnView([
     const i = (r.item ?? {}) as Row;
     return i.date ?? i.date_creation ?? i.submission_date;
   }),
-  col("author", (r) => label((r.item as Row | undefined)?.user)),
+  col("author", (r) => {
+    const i = (r.item ?? {}) as Row;
+    return label(i.user ?? i.requester);
+  }),
   col("summary", (r) => {
     const i = (r.item ?? {}) as Row;
-    return i.content ?? i.comment_submission ?? i.comment_validation;
+    if (r.type === "Validation") {
+      // v2 names: submission_comment / approval_comment, approver {id, name}.
+      const text = i.approval_comment || i.submission_comment;
+      const approver = label(i.approver);
+      return [i.status_name ?? i.status, approver && `→ ${String(approver)}`, text].filter(Boolean).join(" · ");
+    }
+    if (r.type === "Task" && i.state_name) return [i.state_name, i.content].filter(Boolean).join(" · ");
+    return i.content;
   }),
 ]);
 
 export const MARKDOWN_VIEWS: Readonly<Record<string, MarkdownView>> = {
+  glpi_search: V1_SEARCH,
   glpi_list_tickets: V1_TICKETS,
   glpi_list_my_tickets: V1_TICKETS,
   glpi_list_problems: V1_ITIL,

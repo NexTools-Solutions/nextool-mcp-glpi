@@ -208,7 +208,8 @@ The `type` field in the POST body differentiates entry types:
 - `ITILSolution` for solutions
 
 **Advantages of v2:**
-- Single `list_timeline` call returns all entry types in chronological order.
+- Single `list_timeline` call returns all entry types in chronological order. The endpoint ignores
+  `start`/`limit`; `glpi_v2_list_timeline` cuts the page itself and reports `total` (3.5.1).
 - Easier to display a complete conversation view.
 - Works the same for Tickets, Changes, and Problems.
 

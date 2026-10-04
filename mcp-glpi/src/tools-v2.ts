@@ -4,9 +4,10 @@ import {
   jsonResult,
   makeWrap,
 } from "@nextoolsolutions/mcp-glpi-core";
-import type { GlpiV2Config } from "./glpi-v2-client.js";
+import type { GlpiV2Config, ITILItemtype } from "./glpi-v2-client.js";
 import { itemIdSchema } from "./ids.js";
 import { TICKET_STATUS_FILTERS, normalizeStatuses, statusCodes } from "./ticket-lists.js";
+import { statusKind, v2Labels, withV2Labels, type LabelKind } from "./labels.js";
 import {
   // Entity
   listEntities, getEntity, createEntity, updateEntity, deleteEntity,
@@ -71,6 +72,31 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     sort: z.string().optional().describe("Sort, e.g. date_mod:desc (default), date:desc, id:asc, priority:desc"),
   });
   const statusEnum = z.enum(TICKET_STATUS_FILTERS);
+
+  /**
+   * Coded fields of the ITIL items: the v2 labels status ({id, name}) but sends
+   * priority, urgency, impact and the ticket type as numbers. Each gets a
+   * `<field>_name` in the language of the status labels (see v2Labels).
+   */
+  const ITIL_CODES: readonly (readonly [string, LabelKind])[] = [
+    ["priority", "priority"],
+    ["urgency", "urgency"],
+    ["impact", "impact"],
+  ];
+  const TICKET_CODES: readonly (readonly [string, LabelKind])[] = [...ITIL_CODES, ["type", "ticket_type"]];
+
+  /** Adds the `_name` labels to one ITIL item or a list of them; anything else passes through. */
+  async function labelItil(itemtype: ITILItemtype, result: unknown): Promise<unknown> {
+    const rows = Array.isArray(result) ? result : result && typeof result === "object" ? [result] : [];
+    if (rows.length === 0) return result;
+    const labels = await v2Labels(config, {
+      kind: statusKind(itemtype),
+      statuses: rows.map((r) => (r as { status?: unknown } | null)?.status),
+    });
+    const codes = itemtype === "Ticket" ? TICKET_CODES : ITIL_CODES;
+    const out = rows.map((r) => withV2Labels(r, labels, codes));
+    return Array.isArray(result) ? out : out[0];
+  }
 
   /** RSQL on status.id for the status names; the caller's filter is kept and ANDed. */
   function withStatusFilter(filter: string | undefined, status: string | readonly string[] | undefined): string | undefined {
@@ -164,7 +190,8 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
         "List tickets via /Assistance/Ticket, most recently updated first by default. Filter by status " +
         "(status: 'open' = not solved nor closed) and/or an RSQL filter; each ticket carries its team " +
         "(requester, assigned, observer) with names. The v2 API cannot filter on the team, so this tool " +
-        "cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled.",
+        "cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled." +
+        " Coded fields carry labels beside them (priority_name, urgency_name, impact_name, type_name) in the GLPI user's language.",
       inputSchema: itilListSchema.extend({
         status: z
           .union([statusEnum, z.array(statusEnum)])
@@ -177,7 +204,9 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       outputSchema: z.object({}).passthrough(),
     },
     wrap(async ({ status, ...p }) =>
-      jsonResult(await listTickets(config, { ...p, sort: p.sort ?? RECENT_FIRST, filter: withStatusFilter(p.filter, status) })),
+      jsonResult(
+        await labelItil("Ticket", await listTickets(config, { ...p, sort: p.sort ?? RECENT_FIRST, filter: withStatusFilter(p.filter, status) })),
+      ),
     ),
   );
 
@@ -185,11 +214,12 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_get_ticket",
     {
       title: "Get ticket",
-      description: "Retrieve a single ticket by ID.",
+      description:
+        "Retrieve a single ticket by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name, type_name) in the GLPI user's language.",
       inputSchema: z.object({ ticketId: itemIdSchema("Ticket ID") }),
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async ({ ticketId }) => jsonResult(await getTicket(config, ticketId))),
+    wrap(async ({ ticketId }) => jsonResult(await labelItil("Ticket", await getTicket(config, ticketId)))),
   );
 
   server.registerTool(
@@ -245,22 +275,23 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "List changes",
       description:
-        "List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting.",
+        "List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting." +
+        " Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language.",
       inputSchema: itilListSchema,
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async (p) => jsonResult(await listChanges(config, { ...p, sort: p.sort ?? RECENT_FIRST }))),
+    wrap(async (p) => jsonResult(await labelItil("Change", await listChanges(config, { ...p, sort: p.sort ?? RECENT_FIRST })))),
   );
 
   server.registerTool(
     "glpi_v2_get_change",
     {
       title: "Get change",
-      description: "Retrieve a single change by ID.",
+      description: "Retrieve a single change by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language.",
       inputSchema: z.object({ changeId: itemIdSchema("Change ID") }),
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async ({ changeId }) => jsonResult(await getChange(config, changeId))),
+    wrap(async ({ changeId }) => jsonResult(await labelItil("Change", await getChange(config, changeId)))),
   );
 
   server.registerTool(
@@ -299,22 +330,23 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     {
       title: "List problems",
       description:
-        "List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting.",
+        "List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting." +
+        " Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language.",
       inputSchema: itilListSchema,
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async (p) => jsonResult(await listProblems(config, { ...p, sort: p.sort ?? RECENT_FIRST }))),
+    wrap(async (p) => jsonResult(await labelItil("Problem", await listProblems(config, { ...p, sort: p.sort ?? RECENT_FIRST })))),
   );
 
   server.registerTool(
     "glpi_v2_get_problem",
     {
       title: "Get problem",
-      description: "Retrieve a single problem by ID.",
+      description: "Retrieve a single problem by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language.",
       inputSchema: z.object({ problemId: itemIdSchema("Problem ID") }),
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async ({ problemId }) => jsonResult(await getProblem(config, problemId))),
+    wrap(async ({ problemId }) => jsonResult(await labelItil("Problem", await getProblem(config, problemId)))),
   );
 
   server.registerTool(
@@ -352,14 +384,37 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
     "glpi_v2_list_timeline",
     {
       title: "List timeline",
-      description: "List all timeline entries (followups, solutions, tasks, validations) for an ITIL item.",
+      description:
+        "Timeline entries (followups, solutions, tasks, validations) of a Ticket, Change or Problem, in " +
+        "the order GLPI returns them. Paged with start/limit over the whole timeline (the API sends every " +
+        "entry; the page is cut here) and `total` gives the number of entries. Validation and solution " +
+        "statuses carry status_name, task states state_name.",
       inputSchema: z.object({
         itemtype: itilItemtypeSchema,
         itemId: itemIdSchema("Item ID"),
+        start: z.number().int().min(0).optional().describe("Offset in the timeline (default 0)"),
+        limit: z.number().int().optional().describe("Max entries (default 25, ceiling 100)"),
       }),
       outputSchema: z.object({}).passthrough(),
     },
-    wrap(async ({ itemtype, itemId }) => jsonResult(await listTimeline(config, itemtype, itemId))),
+    wrap(async ({ itemtype, itemId, start, limit }) => {
+      const raw = await listTimeline(config, itemtype, itemId);
+      const entries = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+      // The API ignores start/limit on /Timeline (checked on GLPI 11.0.7): the page is cut from the full list.
+      const from = start ?? 0;
+      const page = limit === undefined ? entries.slice(from) : entries.slice(from, from + limit);
+      const labels = page.length ? await v2Labels(config) : undefined;
+      const data = labels
+        ? page.map((e) =>
+            e.type === "Validation" || e.type === "Solution"
+              ? { ...e, item: withV2Labels(e.item, labels, [["status", "validation_status"]]) }
+              : e.type === "Task"
+                ? { ...e, item: withV2Labels(e.item, labels, [["state", "task_state"]]) }
+                : e,
+          )
+        : page;
+      return jsonResult({ data, total: entries.length });
+    }),
   );
 
   server.registerTool(

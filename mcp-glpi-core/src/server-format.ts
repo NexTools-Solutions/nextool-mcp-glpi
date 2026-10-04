@@ -19,6 +19,7 @@
  */
 
 import {
+  flattenRichtext,
   formatPayload,
   renderMarkdown,
   type FieldMode,
@@ -322,10 +323,12 @@ export function installPayloadFormatting(server: object, opts: FormattingOptions
       const build = (d: unknown, note: string | undefined) => {
         const count = Array.isArray(d) ? d.length : undefined;
         if (output === "markdown") {
+          // Nested richtext (the v2 timeline's item.content) is flattened for reading; fields=all stays raw.
+          const flat = mode !== "all" ? flattenRichtext(d) : d;
           const shown =
-            view && Array.isArray(d)
-              ? d.map((r) => (typeof r === "object" && r !== null && !Array.isArray(r) ? view(r as Record<string, unknown>) : r))
-              : d;
+            view && Array.isArray(flat)
+              ? flat.map((r) => (typeof r === "object" && r !== null && !Array.isArray(r) ? view(r as Record<string, unknown>) : r))
+              : flat;
           const markdown = [
             renderMarkdown(shown),
             ...siblings.map(([k, v]) => `\n**${k}**: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`),

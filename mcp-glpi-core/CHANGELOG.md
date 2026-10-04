@@ -4,6 +4,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-04
+
+### Fixed
+- **Raw HTML in markdown tables for nested richtext.** `pickFields` flattens richtext only at the top
+  level, so the API v2 timeline (`{type, item: {content: "<p>…</p>"}}`) reached the markdown summary
+  as `<p>Olá <strong></strong>…`. In `format: "markdown"` (default `fields: "essential"`) the payload
+  now goes through `flattenRichtext` before the view and the table: richtext fields are turned into
+  text at any depth (up to 3 levels). The JSON result and `fields: "all"` keep the HTML as GLPI sent it.
+- Table cells turn a run of line breaks into one space (a flattened paragraph left double spaces).
+
+### Added
+- `flattenRichtext(value, maxDepth = 3)` and `MARKDOWN_RICHTEXT_FIELDS` (`RICHTEXT_FIELDS` plus the
+  validation comments `comment_submission`, `comment_validation`, `submission_comment`,
+  `approval_comment`, which GLPI 11 stores as HTML).
+
 ## [1.3.0] - 2026-10-04
 
 ### Added

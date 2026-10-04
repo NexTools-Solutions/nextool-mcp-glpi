@@ -26,8 +26,8 @@ API path: `/Assistance/Ticket`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_tickets` | List tickets via /Assistance/Ticket, most recently updated first by default. Filter by status (status: 'open' = not solved nor closed) and/or an RSQL filter; each ticket carries its team (requester, assigned, observer) with names. The v2 API cannot filter on the team, so this tool cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled. |
-| `glpi_v2_get_ticket` | Retrieve a single ticket by ID. |
+| `glpi_v2_list_tickets` | List tickets via /Assistance/Ticket, most recently updated first by default. Filter by status (status: 'open' = not solved nor closed) and/or an RSQL filter; each ticket carries its team (requester, assigned, observer) with names. The v2 API cannot filter on the team, so this tool cannot narrow to the connected user's own tickets; the v1 family can, when it is enabled. Coded fields carry labels beside them (priority_name, urgency_name, impact_name, type_name) in the GLPI user's language. |
+| `glpi_v2_get_ticket` | Retrieve a single ticket by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name, type_name) in the GLPI user's language. |
 | `glpi_v2_create_ticket` | Create a new ticket. Fields: name (required), content, type, priority, urgency, impact, etc. |
 | `glpi_v2_update_ticket` | Update an existing ticket by ID. |
 | `glpi_v2_delete_ticket` | Delete a ticket by ID. Use force=true for permanent deletion. |
@@ -40,8 +40,8 @@ API path: `/Assistance/Change`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_changes` | List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting. |
-| `glpi_v2_get_change` | Retrieve a single change by ID. |
+| `glpi_v2_list_changes` | List change requests via /Assistance/Change, most recently updated first by default. Supports RSQL filter, pagination and sorting. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language. |
+| `glpi_v2_get_change` | Retrieve a single change by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language. |
 | `glpi_v2_create_change` | Create a new change request. |
 | `glpi_v2_update_change` | Update an existing change by ID. |
 
@@ -53,8 +53,8 @@ API path: `/Assistance/Problem`
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_problems` | List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting. |
-| `glpi_v2_get_problem` | Retrieve a single problem by ID. |
+| `glpi_v2_list_problems` | List problems via /Assistance/Problem, most recently updated first by default. Supports RSQL filter, pagination and sorting. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language. |
+| `glpi_v2_get_problem` | Retrieve a single problem by ID. Coded fields carry labels beside them (priority_name, urgency_name, impact_name) in the GLPI user's language. |
 | `glpi_v2_create_problem` | Create a new problem. |
 | `glpi_v2_update_problem` | Update an existing problem by ID. |
 
@@ -68,7 +68,7 @@ All timeline tools accept `itemtype` (`Ticket`, `Change`, or `Problem`) and `ite
 
 | Tool | Description |
 |------|-------------|
-| `glpi_v2_list_timeline` | List all timeline entries (followups, solutions, tasks, validations) for an ITIL item. |
+| `glpi_v2_list_timeline` | Timeline entries (followups, solutions, tasks, validations) of a Ticket, Change or Problem, in the order GLPI returns them. Paged with start/limit over the whole timeline (the API sends every entry; the page is cut here) and `total` gives the number of entries. Validation and solution statuses carry status_name, task states state_name. |
 | `glpi_v2_add_followup` | Add a followup to a Ticket, Change or Problem. |
 | `glpi_v2_add_solution` | Add a solution to a Ticket, Change or Problem. |
 | `glpi_v2_add_task` | Add a task to a Ticket, Change or Problem. |

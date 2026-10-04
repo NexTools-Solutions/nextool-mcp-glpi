@@ -48,10 +48,13 @@ They compose in any order.
   `format: "markdown"` with `fields: "essential"` the listing table shows only those columns; the
   JSON result and `fields: "all"` keep every field. The `Ticket` whitelist keeps `requesters` and
   `assigned` (people resolved by the server).
+- Nested richtext in markdown (1.3.1): `flattenRichtext` turns HTML into text in richtext fields at
+  any depth (the API v2 timeline's `item.content`, validation comments) before a markdown table or
+  item is drawn; the JSON result and `fields: "all"` keep the HTML.
 
 ## Consuming it
 
-`@nextoolsolutions/mcp-glpi` declares it as `^1.3.0`. Inside the repo its lockfile links the
+`@nextoolsolutions/mcp-glpi` declares it as `^1.3.1`. Inside the repo its lockfile links the
 sibling folder, so build here first — `tsx` does not transpile TypeScript inside
 `node_modules`, the server loads the compiled `dist/`:
 
