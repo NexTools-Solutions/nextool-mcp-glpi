@@ -4,6 +4,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-04
+
+Polish from a real session with Claude: numbered search columns, labels in two languages, a
+22-column markdown table, administration in the everyday preset, instructions naming absent
+tools. Checked live on GLPI 11.0.7 (API v1 and v2, user language pt_BR), read-only.
+
+### Changed
+- **`glpi_search` keys rows by search option name by default** (`named_columns` now defaults to
+  `true`; `false` keeps the numeric IDs). Names come from `listSearchOptions` in the GLPI user's
+  language ("Título", "Status", "Última atualização"). `glpi_list_my_tickets` and the other
+  internal searches read columns by number and are unaffected.
+- **v1 labels follow the GLPI session language** (`getFullSession` → `glpilanguage`, cached per
+  credential, English if the session cannot be read): `status_name`, `type_name`,
+  `priority_name`, `urgency_name`, `impact_name`, the actor `type_name` and the validation
+  `status_name`. Tables for pt_BR, pt_PT, es_ES, fr_FR, it_IT and de_DE use GLPI's own texts
+  (msgids of GLPI 11 and their translations in `locales/*.po`); a regional variant uses its family
+  (es_MX → es_ES); anything else falls back to GLPI's English. The same ticket now reads
+  "Em atendimento (atribuído)" on `glpi_get_ticket` and on `glpi_v2_get_ticket`.
+  English fallback texts are GLPI's: the actor role "Assigned" became "Assigned to" and the
+  validation statuses "None/Waiting/Accepted/Refused" became "Not subject to approval / Waiting
+  for approval / Granted / Refused"; the `*_NAMES` constants follow.
+- **Compact markdown tables** (`src/markdown-views.ts`): ticket listings show id, title, status,
+  category, requester, technician, priority, updated (was 22 columns with bare IDs such as
+  `users_id_lastupdater`); problems, changes, assets, users, KB articles, followups and tasks have
+  their own sets, and the timeline is one line per entry (type, id, date, author, summary) instead
+  of the union of 30+ columns. v1 and v2. JSON is unchanged; `fields: "all"` draws every column.
+- **Administration with writes only in `admin`** (owner's decision): `glpi_create_user`,
+  `glpi_update_user`, `glpi_v2_create_user`, `glpi_v2_update_user` and `glpi_v2_create_group`
+  left the `users` preset (entities, rules and webhooks writes were already only in `admin`).
+  `users`: 15 → 10 tools (reads only); `admin`: 42 → 55 (the user writes plus the user/group reads
+  they point to). `core` stays at 93 and never holds an entry of `ADMIN_WRITE_TOOLS`.
+- **`instructions` built from the registered tools** (`buildInstructions`): each sentence names
+  only tools that are present, and the areas listed are those a registered tool covers. A v1-only
+  server no longer mentions `glpi_v2_*`. `DEFAULT_INSTRUCTIONS` is the text for every tool of both
+  families; `createGlpiServer(instance, { instructions })` still replaces it.
+
+### Added
+- `glpi_list_tickets` rows carry `status_name`, `type_name`, `priority_name`, `category_name` and
+  `requesters` / `assigned` as `{id, name}` (one search per 50 tickets on options 2/4/5).
+- `glpi_list_changes` / `glpi_list_problems` / `glpi_get_change` / `glpi_get_problem`:
+  `status_name`, `priority_name`, `urgency_name`, `impact_name`, `category_name` (the get tools also
+  the recipient, last updater and entity names).
+- `glpi_list_assets`: `location_name`, `state_name`, `user_name`.
+- Library exports: `buildInstructions`, `ADMIN_WRITE_TOOLS`, `EVERYDAY_TOOLSETS`, `LABELS`,
+  `LABEL_LANGUAGES`, `labelsFor`.
+- `test/conversation.test.ts`: search column names, labels per language (and fallback, and one
+  session read per credential), compact tables, admin writes only in `admin`, instructions naming
+  only registered tools for every preset × family.
+
+### Dependencies
+- `@nextoolsolutions/mcp-glpi-core` `^1.3.0` (markdown views).
+
 ## [3.4.0] - 2026-10-04
 
 Fixes from a real session with Claude ("list my tickets" returned February tickets, people as

@@ -26,7 +26,10 @@ export type {
   V1Credentials,
   V2Credentials,
 } from "./instance.js";
-export { TOOLSETS, TOOLSET_NAMES, parseToolsets } from "./toolsets.js";
+export { buildInstructions } from "./instructions.js";
+export { ADMIN_WRITE_TOOLS, EVERYDAY_TOOLSETS, TOOLSETS, TOOLSET_NAMES, parseToolsets } from "./toolsets.js";
+export { LABELS, LABEL_LANGUAGES, labelsFor } from "./labels.js";
+export type { LabelKind, LabelTable } from "./labels.js";
 export type { ToolsetDefinition } from "./toolsets.js";
 export { GlpiApiError } from "./glpi-client.js";
 export { GlpiV2ApiError } from "./glpi-v2-client.js";

@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
+### Added
+- `markdownViews` option of `installPayloadFormatting` and `columnView` / `MarkdownColumn` /
+  `MarkdownView`: per-tool column projection for listings in `format: "markdown"` (only with the
+  default `fields: "essential"`; the JSON result is never projected). The size budget measures the
+  projected table, so more rows fit.
+
+### Changed
+- `ESSENTIAL_FIELDS.Ticket` keeps `requesters` and `assigned` (the `{id, name}` lists
+  `mcp-glpi` 3.5.0 adds to ticket listings).
+
 ## [1.2.0] - 2026-10-04
 
 ### Added

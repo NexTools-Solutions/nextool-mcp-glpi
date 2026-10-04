@@ -12,6 +12,13 @@
  * operations (create/update ticket, followup, solution, task, validation,
  * actors).
  *
+ * GLPI administration with writes — creating or changing users and groups,
+ * entities, business rules and webhooks — lives ONLY in `admin` (owner's
+ * decision, 3.5.0): an assistant that works tickets must not be one prompt
+ * away from creating an account or a webhook. The reads of those areas that
+ * help with a ticket (who is this user, which entity) stay in the everyday
+ * presets. Asserted by the test suite through ADMIN_WRITE_TOOLS.
+ *
  * Self-contained presets (asserted by the test suite): a tool named in the
  * description or parameters of another tool is in every preset that holds
  * the tool naming it — a preset never sends the model after a tool it lacks.
@@ -87,11 +94,10 @@ const DOCUMENTS = [
   "glpi_v2_download_document",
 ] as const;
 
+/** User and group reads; creating or changing them is administration (ADMIN_WRITE_TOOLS). */
 const USERS = [
-  "glpi_get_user", "glpi_search_user_by_email", "glpi_list_users", "glpi_create_user",
-  "glpi_update_user", "glpi_list_groups", "glpi_get_group",
-  "glpi_v2_list_users", "glpi_v2_get_user", "glpi_v2_get_me", "glpi_v2_create_user",
-  "glpi_v2_update_user", "glpi_v2_list_groups", "glpi_v2_get_group", "glpi_v2_create_group",
+  "glpi_get_user", "glpi_search_user_by_email", "glpi_list_users", "glpi_list_groups", "glpi_get_group",
+  "glpi_v2_list_users", "glpi_v2_get_user", "glpi_v2_get_me", "glpi_v2_list_groups", "glpi_v2_get_group",
 ] as const;
 
 const SEARCH = ["glpi_search", "glpi_count_items", "glpi_list_search_options"] as const;
@@ -111,8 +117,28 @@ const ENTITY_READS = [
   "glpi_v2_list_entities", "glpi_v2_get_entity",
 ] as const;
 
+/**
+ * GLPI administration with writes: users and groups, entities, business rules
+ * and webhooks. Only the `admin` preset holds them.
+ */
+export const ADMIN_WRITE_TOOLS: readonly string[] = [
+  "glpi_create_user", "glpi_update_user",
+  "glpi_v2_create_user", "glpi_v2_update_user", "glpi_v2_create_group",
+  "glpi_create_entity", "glpi_update_entity", "glpi_delete_entity",
+  "glpi_v2_create_entity", "glpi_v2_update_entity", "glpi_v2_delete_entity",
+  "glpi_create_rule_ticket", "glpi_create_rule_criteria", "glpi_create_rule_action", "glpi_update_rule_action",
+  "glpi_v2_create_rule",
+  "glpi_create_webhook", "glpi_update_webhook", "glpi_set_webhook_active", "glpi_delete_webhook",
+  "glpi_retry_webhook_delivery",
+];
+
+/** Presets for everyday service-desk work: none of them may hold an ADMIN_WRITE_TOOLS entry. */
+export const EVERYDAY_TOOLSETS: readonly string[] = ["core", "tickets", "itil", "assets", "kb", "documents", "users", "search"];
+
 const ADMIN = [
   ...ENTITY_READS,
+  "glpi_list_users", "glpi_get_user", "glpi_list_groups", "glpi_get_group",
+  "glpi_v2_list_users", "glpi_v2_get_user", "glpi_v2_list_groups", "glpi_v2_get_group",
   "glpi_create_entity", "glpi_update_entity", "glpi_delete_entity", "glpi_change_active_entities",
   "glpi_get_full_session",
   "glpi_list_rules", "glpi_get_rule_ticket", "glpi_list_rule_ticket_criteria",
@@ -127,19 +153,20 @@ const ADMIN = [
   "glpi_v2_create_entity", "glpi_v2_update_entity", "glpi_v2_delete_entity",
   "glpi_v2_list_rule_collections", "glpi_v2_list_rules", "glpi_v2_get_rule", "glpi_v2_create_rule",
   "glpi_v2_get_session", "glpi_v2_health_check",
-] as const;
+  ...ADMIN_WRITE_TOOLS,
+];
 
 function unique(names: readonly string[]): string[] {
   return [...new Set(names)];
 }
 
-/** core = reads of the everyday presets + non-destructive ticket operations. */
+/** core = reads of the everyday presets + non-destructive ticket operations (never an admin write). */
 const CORE = unique([
   ...[...TICKETS, ...ITIL, ...ASSETS, ...KB, ...DOCUMENTS, ...USERS, ...SEARCH, ...PEOPLE_READS, ...ENTITY_READS].filter(
     (name) => classifyTool(name) === "read",
   ),
   ...TICKETS.filter((name) => classifyTool(name) === "write"),
-]);
+]).filter((name) => !ADMIN_WRITE_TOOLS.includes(name));
 
 export const TOOLSETS: Readonly<Record<string, ToolsetDefinition>> = {
   core: {
@@ -159,10 +186,12 @@ export const TOOLSETS: Readonly<Record<string, ToolsetDefinition>> = {
   assets: { description: "Assets, reservations and locations (plus generic search)", tools: unique([...ASSETS, ...SEARCH_READS]) },
   kb: { description: "Knowledge base articles and categories", tools: unique(KB) },
   documents: { description: "Documents and their links to items", tools: unique(DOCUMENTS) },
-  users: { description: "Users and groups", tools: unique(USERS) },
+  users: { description: "User and group reads (creating or changing them is in admin)", tools: unique(USERS) },
   search: { description: "Generic search, counts and search options", tools: unique(SEARCH) },
   admin: {
-    description: "Entities, session/profile context, business rules, followup templates, webhooks",
+    description:
+      "GLPI administration: users and groups (create/update), entities, session/profile context, business rules, " +
+      "followup templates, webhooks",
     tools: unique(ADMIN),
   },
   v2: { description: "Every GLPI 11 API v2 tool (glpi_v2_*)", tools: [], globs: ["glpi_v2_*"] },

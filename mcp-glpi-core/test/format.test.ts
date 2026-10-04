@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  columnView,
   ESSENTIAL_FIELDS,
   formatPayload,
   pickFields,
@@ -338,6 +339,45 @@ describe("installPayloadFormatting", () => {
     assert.equal(json.structuredContent.total, 42);
     const md = (await server.tools.get("glpi_list_tickets")!.handler({ format: "markdown" })) as { content: { text: string }[] };
     assert.match(md.content[0].text, /\*\*total\*\*: 42/);
+  });
+
+  it("projects markdown listings onto the tool's view; JSON and fields=all keep every column", async () => {
+    const server = new FakeServer();
+    installPayloadFormatting(server, {
+      ...FORMAT_OPTS,
+      markdownViews: {
+        glpi_list_tickets: columnView([
+          { label: "id", from: "id" },
+          { label: "title", from: "name" },
+          { label: "status", from: ["status_name", "status"] },
+          { label: "who", from: (r) => (r._people as { name: string }[] | undefined)?.map((p) => p.name).join(", ") },
+        ]),
+      },
+    });
+    const row = { id: 7, name: "VPN", status: 2, status_name: "Novo", users_id_lastupdater: 368, _people: [{ id: 1, name: "Ana" }] };
+    server.registerTool("glpi_list_tickets", { inputSchema: fakeZodObject({ range: {} }) }, async () => jsonToolResult([row]));
+    const handler = server.tools.get("glpi_list_tickets")!.handler;
+
+    const md = (await handler({ format: "markdown" })) as { content: { text: string }[] };
+    const [header, , line] = md.content[0].text.split("\n");
+    assert.equal(header, "| id | title | status | who |");
+    assert.equal(line, "| 7 | VPN | Novo | Ana |");
+    assert.doesNotMatch(md.content[0].text, /users_id_lastupdater/);
+
+    const all = (await handler({ format: "markdown", fields: "all" })) as { content: { text: string }[] };
+    assert.match(all.content[0].text, /users_id_lastupdater/);
+
+    const json = (await handler({})) as { structuredContent: { data: Record<string, unknown>[] } };
+    assert.equal(json.structuredContent.data[0].users_id_lastupdater, 368);
+  });
+
+  it("columnView takes the first non-empty candidate key and leaves a missing value blank", () => {
+    const view = columnView([
+      { label: "a", from: ["x", "y"] },
+      { label: "b", from: "missing" },
+    ]);
+    assert.deepEqual(view({ x: "", y: 3 }), { a: 3, b: "" });
+    assert.deepEqual(view({ x: [], y: null }), { a: "", b: "" });
   });
 
   it("formats results that are not wrapped in data (API v2 single items)", async () => {

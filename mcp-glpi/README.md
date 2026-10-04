@@ -86,7 +86,9 @@ allowlist), `MCP_SESSION_IDLE_MIN` (default 30). The file is re-read when it cha
   `requester_groups`, `assigned_groups`, `status_name`, `type_name` and `my_roles`; the result
   also has `total` and `user`.
 - `glpi_list_tickets`: new `status`, `sort` and `order` (the old `range` and `expand_dropdowns`
-  keep working). With a status filter the result also has `total`.
+  keep working). With a status filter the result also has `total`. Rows carry `status_name`,
+  `type_name`, `priority_name`, `category_name`, and `requesters` / `assigned` as `{id, name}`
+  (one search per 50 tickets, not one call per ticket).
 - `status` takes one name or a list: `new`, `assigned` (= `processing`), `planned`, `pending`,
   `solved`, `closed`, and `open` (= new + assigned + planned + pending, GLPI's "not old").
 - `sort`: `date_mod` (default), `date`, `id`, `priority`, `status`, `name`, `solvedate`,
@@ -102,10 +104,23 @@ Sub-items keep their IDs and gain names: `glpi_list_ticket_users` (`user_name`, 
 `glpi_list_ticket_groups` (`group_name`, `type_name`), followups (`user_name`), tasks
 (`user_name`, `tech_name`, `tech_group_name`), validations (`user_name`, `validator_name`,
 `status_name`), `glpi_list_timeline` (all of these, plus `solutiontype_name` and
-`user_name_approval` on solutions) and `glpi_get_ticket` (`recipient_name`, `category_name`,
-`entity_name`, `requesttype_name`, `location_name`, `status_name`, `type_name`). Names are read
-with GET /<itemtype>/<id> through a 5-minute cache per credential; a name the user cannot read
-stays `null`. `glpi_search` takes `named_columns: true` to key rows by search option name.
+`user_name_approval` on solutions), `glpi_get_ticket` (`recipient_name`, `category_name`,
+`entity_name`, `requesttype_name`, `location_name`, `status_name`, `type_name`, `priority_name`,
+`urgency_name`, `impact_name`), problems and changes (`category_name`, `status_name`,
+`priority_name`; the single item also the people and entity) and `glpi_list_assets`
+(`location_name`, `state_name`, `user_name`). Names are read with GET /<itemtype>/<id> through a
+5-minute cache per credential; a name the user cannot read stays `null`.
+
+Labels of codes (`*_status`, `type_name`, `priority_name`...) are in the **language of the GLPI
+session** (`getFullSession` → `glpilanguage`, cached per credential), with GLPI's own texts:
+pt_BR, pt_PT, es_ES, fr_FR, it_IT and de_DE have tables (taken from GLPI 11's `locales/*.po`), a
+regional variant uses its family (es_MX → es_ES), anything else GLPI's English. Before 3.5.0 the
+v1 tools always answered in English ("Solved") while the v2 ones answered in the GLPI language
+("Solucionado").
+
+`glpi_search` keys its rows by search option **name** in the GLPI user's language (`"Título"`,
+`"Status"`, `"Última atualização"`) by default since 3.5.0; `named_columns: false` returns the
+numeric option IDs (`"1"`, `"12"`, `"19"`).
 
 Full reference: [`docs/TOOLS.md`](docs/TOOLS.md) (v1) and [`docs/v2/TOOLS.md`](docs/v2/TOOLS.md) (v2);
 OAuth2 setup in [`docs/v2/SETUP.md`](docs/v2/SETUP.md).
@@ -131,12 +146,19 @@ and `assets` carries the generic search its list tool points to.
 | `assets` | 15 (14 + 1) | assets, reservations, locations, generic search |
 | `kb` | 16 (10 + 6) | knowledge base |
 | `documents` | 12 (8 + 4) | documents and document links |
-| `users` | 15 (7 + 8) | users and groups |
+| `users` | 10 (5 + 5) | user and group reads |
 | `search` | 3 (3 + 0) | generic search, counts, search options |
-| `admin` | 42 (31 + 11) | entities, session/profile, rules, followup templates, webhooks |
+| `admin` | 55 (37 + 18) | GLPI administration: create/update users and groups, entities, session/profile, rules, followup templates, webhooks (plus the user/group reads) |
 | `v2` | 55 (0 + 55) | every `glpi_v2_*` tool |
 
-Before 3.4.0: core 92, tickets 42, itil 38, assets 13 (the others are unchanged).
+**Administration with writes only in `admin` (3.5.0, owner's decision):** creating or changing
+users and groups, entities, business rules and webhooks is not in `core` nor in any everyday
+preset (`tickets`, `itil`, `assets`, `kb`, `documents`, `users`, `search`); the reads that help
+with a ticket (users, groups, entities) stay. The `v2` preset is the whole family and still holds
+them. Asserted by the tests (`ADMIN_WRITE_TOOLS`, `EVERYDAY_TOOLSETS`).
+
+Before 3.5.0: users 15 (7 + 8), admin 42 (31 + 11). Before 3.4.0: core 92, tickets 42, itil 38,
+assets 13.
 
 <details>
 <summary>Tools in each preset</summary>
@@ -183,24 +205,24 @@ v1: `glpi_list_documents`, `glpi_get_document`, `glpi_create_document`, `glpi_de
 
 v2: `glpi_v2_list_documents`, `glpi_v2_get_document`, `glpi_v2_create_document`, `glpi_v2_download_document`
 
-#### users (15: 7 v1 + 8 v2)
-Users and groups
+#### users (10: 5 v1 + 5 v2)
+User and group reads (creating or changing them is in admin)
 
-v1: `glpi_get_user`, `glpi_search_user_by_email`, `glpi_list_users`, `glpi_create_user`, `glpi_update_user`, `glpi_list_groups`, `glpi_get_group`
+v1: `glpi_get_user`, `glpi_search_user_by_email`, `glpi_list_users`, `glpi_list_groups`, `glpi_get_group`
 
-v2: `glpi_v2_list_users`, `glpi_v2_get_user`, `glpi_v2_get_me`, `glpi_v2_create_user`, `glpi_v2_update_user`, `glpi_v2_list_groups`, `glpi_v2_get_group`, `glpi_v2_create_group`
+v2: `glpi_v2_list_users`, `glpi_v2_get_user`, `glpi_v2_get_me`, `glpi_v2_list_groups`, `glpi_v2_get_group`
 
 #### search (3: 3 v1 + 0 v2)
 Generic search, counts and search options
 
 v1: `glpi_search`, `glpi_count_items`, `glpi_list_search_options`
 
-#### admin (42: 31 v1 + 11 v2)
-Entities, session/profile context, business rules, followup templates, webhooks
+#### admin (55: 37 v1 + 18 v2)
+GLPI administration: users and groups (create/update), entities, session/profile context, business rules, followup templates, webhooks
 
-v1: `glpi_list_entities`, `glpi_get_entity`, `glpi_get_my_entities`, `glpi_get_my_profiles`, `glpi_create_entity`, `glpi_update_entity`, `glpi_delete_entity`, `glpi_change_active_entities`, `glpi_get_full_session`, `glpi_list_rules`, `glpi_get_rule_ticket`, `glpi_list_rule_ticket_criteria`, `glpi_list_rule_ticket_actions`, `glpi_list_rule_criteria`, `glpi_list_rule_actions`, `glpi_create_rule_ticket`, `glpi_create_rule_criteria`, `glpi_create_rule_action`, `glpi_update_rule_action`, `glpi_list_itil_followup_templates`, `glpi_get_itil_followup_template`, `glpi_create_itil_followup_template`, `glpi_update_itil_followup_template`, `glpi_list_webhooks`, `glpi_get_webhook`, `glpi_create_webhook`, `glpi_update_webhook`, `glpi_set_webhook_active`, `glpi_delete_webhook`, `glpi_list_webhook_deliveries`, `glpi_retry_webhook_delivery`
+v1: `glpi_list_entities`, `glpi_get_entity`, `glpi_get_my_entities`, `glpi_get_my_profiles`, `glpi_list_users`, `glpi_get_user`, `glpi_list_groups`, `glpi_get_group`, `glpi_create_entity`, `glpi_update_entity`, `glpi_delete_entity`, `glpi_change_active_entities`, `glpi_get_full_session`, `glpi_list_rules`, `glpi_get_rule_ticket`, `glpi_list_rule_ticket_criteria`, `glpi_list_rule_ticket_actions`, `glpi_list_rule_criteria`, `glpi_list_rule_actions`, `glpi_create_rule_ticket`, `glpi_create_rule_criteria`, `glpi_create_rule_action`, `glpi_update_rule_action`, `glpi_list_itil_followup_templates`, `glpi_get_itil_followup_template`, `glpi_create_itil_followup_template`, `glpi_update_itil_followup_template`, `glpi_list_webhooks`, `glpi_get_webhook`, `glpi_create_webhook`, `glpi_update_webhook`, `glpi_set_webhook_active`, `glpi_delete_webhook`, `glpi_list_webhook_deliveries`, `glpi_retry_webhook_delivery`, `glpi_create_user`, `glpi_update_user`
 
-v2: `glpi_v2_list_entities`, `glpi_v2_get_entity`, `glpi_v2_create_entity`, `glpi_v2_update_entity`, `glpi_v2_delete_entity`, `glpi_v2_list_rule_collections`, `glpi_v2_list_rules`, `glpi_v2_get_rule`, `glpi_v2_create_rule`, `glpi_v2_get_session`, `glpi_v2_health_check`
+v2: `glpi_v2_list_entities`, `glpi_v2_get_entity`, `glpi_v2_list_users`, `glpi_v2_get_user`, `glpi_v2_list_groups`, `glpi_v2_get_group`, `glpi_v2_create_entity`, `glpi_v2_update_entity`, `glpi_v2_delete_entity`, `glpi_v2_list_rule_collections`, `glpi_v2_list_rules`, `glpi_v2_get_rule`, `glpi_v2_create_rule`, `glpi_v2_get_session`, `glpi_v2_health_check`, `glpi_v2_create_user`, `glpi_v2_update_user`, `glpi_v2_create_group`
 
 #### v2 (55: 0 v1 + 55 v2)
 Every GLPI 11 API v2 tool (glpi_v2_*)
@@ -266,6 +288,29 @@ texts never cut there). The markdown is in the text block **and** in `structured
 results (Claude among them) give the model `structuredContent`, so a text-only rendering was
 ignored before 3.4.0. JSON stays the default.
 
+Listing tables are compact (3.5.0): a raw ticket row has 22 columns, bare IDs among them, so each
+kind of listing has its own column set (`src/markdown-views.ts`):
+
+| Listing | Columns |
+|---------|---------|
+| tickets (`glpi_list_tickets`, `glpi_list_my_tickets`, `glpi_v2_list_tickets`) | id, title, status, category, requester, technician, priority, updated |
+| problems, changes (v1 and v2) | id, title, status, category, (v2: technician), priority, updated |
+| timeline (`glpi_list_timeline`, `glpi_v2_list_timeline`) | type, id, date, author, summary — one line per entry |
+| followups / tasks | id, date, author, (tasks: technician), private, summary |
+| assets | id, name, serial, inventory number, status, location, user, updated |
+| users (v1 and v2) | id, login, name, active, last login |
+| KB articles (v1 and v2) | id, title, (v2: category), FAQ, views, updated |
+
+The JSON result keeps every field, and `fields: "all"` draws every column in markdown too.
+
+## Instructions
+
+The `instructions` sent in `initialize` are built from the tools the server actually registered:
+under a preset (or `GLPI_TOOLS_EXCLUDE`) they name only the tools present, and the areas they
+list are the ones a registered tool covers. `DEFAULT_INSTRUCTIONS` is the text for a server with
+every tool of both families; `buildInstructions(tools, { v1, v2 })` builds it for any set; a host
+passes `createGlpiServer(instance, { instructions })` to replace it.
+
 Listings are bounded by count and by size:
 - 25 items by default, at most 100 per call (`GLPI_DEFAULT_PAGE_SIZE`, `GLPI_MAX_PAGE_SIZE`;
   the ceiling was 200);
@@ -301,21 +346,24 @@ schema error).
 - `src/assets-client.ts` — assets, reservations, counting
 - `src/webhooks-client.ts` — webhooks and delivery queue (GLPI 10.0.7+)
 - `src/ticket-lists.ts` — `glpi_list_tickets` sorting/status filter and `glpi_list_my_tickets`
-- `src/names.ts` — names next to IDs (cached lookups) and the code maps
-- `src/search-columns.ts` — search option names for `glpi_search` (`named_columns`)
+- `src/names.ts` — names next to IDs (cached lookups) and the code labels
+- `src/labels.ts` — code labels per GLPI language and the session (user + language) cache
+- `src/markdown-views.ts` — compact markdown columns per kind of listing
+- `src/instructions.ts` — `instructions` built from the registered tools
+- `src/search-columns.ts` — search option names for `glpi_search` (`named_columns`, default on)
 - `src/ids.ts` — item ID schema
 - `src/resources.ts`, `src/prompts.ts` — MCP resources and prompts
 - `test/` — `npm test` (node --test, no extra dependency)
 
 Shared infrastructure — HTTP transport with retry, write policy, payload formatting,
 pagination and idempotency — lives in [`@nextoolsolutions/mcp-glpi-core`](../mcp-glpi-core),
-declared as a semver dependency (`^1.2.0`).
+declared as a semver dependency (`^1.3.0`).
 
 ## Development
 
 Inside this repo the core resolves to the sibling folder: the lockfile links
 `node_modules/@nextoolsolutions/mcp-glpi-core` to `../mcp-glpi-core`, and npm accepts the link
-because the folder's version satisfies `^1.2.0`. So build the core first:
+because the folder's version satisfies `^1.3.0`. So build the core first:
 
 ```bash
 (cd ../mcp-glpi-core && npm ci && npm run build)   # the server loads the core's dist/

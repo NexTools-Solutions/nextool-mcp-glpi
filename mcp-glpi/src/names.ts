@@ -14,6 +14,7 @@
  */
 
 import { glpiRequest, v1CredentialKey, type GlpiConfig } from "./glpi-client.js";
+import { LABELS, sessionLabels, statusKind, type LabelKind, type LabelTable } from "./labels.js";
 
 /** How long a resolved name is reused. Short: a renamed user shows up within minutes. */
 export const NAME_CACHE_TTL_MS = 5 * 60_000;
@@ -132,36 +133,23 @@ export async function addNames<T extends Record<string, unknown>>(
 }
 
 // ---------------------------------------------------------------------------
-// Code maps (not queryable through the API; same values as glpi://code-maps)
+// Code labels (not queryable through the API v1). The tools use the table of
+// the session language (labels.ts); these English constants are GLPI's own
+// English texts, kept for callers that want a fixed language.
 // ---------------------------------------------------------------------------
 
-export const TICKET_STATUS_NAMES: Record<number, string> = {
-  1: "New",
-  2: "Processing (assigned)",
-  3: "Processing (planned)",
-  4: "Pending",
-  5: "Solved",
-  6: "Closed",
-};
-
-export const TICKET_TYPE_NAMES: Record<number, string> = { 1: "Incident", 2: "Request" };
-
-export const ACTOR_TYPE_NAMES: Record<number, string> = { 1: "Requester", 2: "Assigned", 3: "Observer" };
-
+export const TICKET_STATUS_NAMES: Readonly<Record<number, string>> = LABELS.en.ticket_status;
+export const TICKET_TYPE_NAMES: Readonly<Record<number, string>> = LABELS.en.ticket_type;
+export const ACTOR_TYPE_NAMES: Readonly<Record<number, string>> = LABELS.en.actor_type;
 /** CommonITILValidation: NONE=1, WAITING=2, ACCEPTED=3, REFUSED=4. */
-export const VALIDATION_STATUS_NAMES: Record<number, string> = {
-  1: "None",
-  2: "Waiting",
-  3: "Accepted",
-  4: "Refused",
-};
+export const VALIDATION_STATUS_NAMES: Readonly<Record<number, string>> = LABELS.en.validation_status;
 
 /** Adds `<as>` = map[row[field]] when the code is known. */
 export function addCodeName<T extends Record<string, unknown>>(
   rows: T[],
   field: string,
   as: string,
-  map: Record<number, string>,
+  map: Readonly<Record<number, string>>,
 ): T[] {
   return rows.map((row) => {
     const code = Number(row[field]);
@@ -217,5 +205,45 @@ export async function nameTasks<T extends Record<string, unknown>>(config: GlpiC
 }
 
 export async function nameValidations<T extends Record<string, unknown>>(config: GlpiConfig, rows: T[]): Promise<T[]> {
-  return addCodeName(await addNames(config, rows, VALIDATION_NAMES), "status", "status_name", VALIDATION_STATUS_NAMES);
+  const labels = await sessionLabels(config);
+  return addCodeName(await addNames(config, rows, VALIDATION_NAMES), "status", "status_name", labels.validation_status);
 }
+
+/** `[field, as, kind]`: adds `as` = label of row[field] in the table's `kind`. */
+export type LabelSpec = readonly [field: string, as: string, kind: LabelKind];
+
+export function addLabels<T extends Record<string, unknown>>(rows: T[], table: LabelTable, specs: readonly LabelSpec[]): T[] {
+  let out = rows;
+  for (const [field, as, kind] of specs) out = addCodeName(out, field, as, table[kind]);
+  return out;
+}
+
+/** Status, priority, urgency and impact labels of an ITIL item (plus the type on tickets). */
+export function itilLabelSpecs(itemtype: "Ticket" | "Problem" | "Change"): LabelSpec[] {
+  return [
+    ["status", "status_name", statusKind(itemtype)],
+    ...(itemtype === "Ticket" ? ([["type", "type_name", "ticket_type"]] as LabelSpec[]) : []),
+    ["priority", "priority_name", "priority"],
+    ["urgency", "urgency_name", "urgency"],
+    ["impact", "impact_name", "impact"],
+  ];
+}
+
+/** Category name beside the ID on problem and change rows. */
+export const ITIL_LIST_NAMES: NameSpec[] = [{ field: "itilcategories_id", itemtype: "ITILCategory", as: "category_name" }];
+
+/** Problems and changes: category name and the labels in the session language. */
+export async function nameItilRows<T extends Record<string, unknown>>(
+  config: GlpiConfig,
+  rows: T[],
+  itemtype: "Problem" | "Change",
+  names: NameSpec[] = ITIL_LIST_NAMES,
+): Promise<T[]> {
+  const [named, labels] = await Promise.all([addNames(config, rows, names), sessionLabels(config)]);
+  return addLabels(named, labels, itilLabelSpecs(itemtype));
+}
+
+/** Single problem or change: who opened and last changed it, category and entity. */
+export const ITIL_ITEM_NAMES: NameSpec[] = TICKET_NAMES.filter((s) =>
+  ["users_id_recipient", "users_id_lastupdater", "itilcategories_id", "entities_id"].includes(s.field),
+);

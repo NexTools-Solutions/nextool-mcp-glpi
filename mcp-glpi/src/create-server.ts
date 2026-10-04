@@ -21,12 +21,14 @@ import {
 import type { InstanceConfig } from "./instance.js";
 import { registerResources } from "./resources.js";
 import { buildPrompts, registerPrompts } from "./prompts.js";
-import { installToolFilter, parseGlobList } from "./tool-filter.js";
+import { buildInstructions } from "./instructions.js";
+import { MARKDOWN_VIEWS } from "./markdown-views.js";
+import { installToolFilter, isToolSelected, parseGlobList, type ToolFilterOptions } from "./tool-filter.js";
 import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 
-export const SERVER_VERSION = "3.4.0";
+export const SERVER_VERSION = "3.5.0";
 
 export interface CreatedServer {
   server: McpServer;
@@ -50,26 +52,50 @@ export interface CreateServerOptions {
    * present its own title, description, website and icons. `version` stays the package version.
    */
   serverInfo?: Partial<Pick<Implementation, "name" | "title" | "description" | "websiteUrl" | "icons">>;
-  /** Text sent as `instructions` in `initialize` (guidance for the model). Default: DEFAULT_INSTRUCTIONS. */
+  /**
+   * Text sent as `instructions` in `initialize` (guidance for the model). Default: built from the tools
+   * this server registers (`buildInstructions`), so it never names a tool the preset left out.
+   */
   instructions?: string;
 }
 
-/** Guidance for the model: what the tools cover and how to use them well. */
-export const DEFAULT_INSTRUCTIONS =
-  "Tools to work with a GLPI service desk (GLPI 10 and 11). glpi_* use the REST API v1, glpi_v2_* the GLPI 11 API v2. " +
-  "Typical flow: for the connected user's own tickets (\"my tickets\") use glpi_list_my_tickets; otherwise find tickets with " +
-  "glpi_list_tickets (most recent first, filter by status) or glpi_search, open one with glpi_get_ticket, read its history with " +
-  "glpi_list_timeline (or followups/tasks/solutions), then act: add followups, tasks or solutions, update fields, assign users or groups. " +
-  "Tool names above exist only when their preset is enabled. Also available, depending on the enabled presets: problems and changes, " +
-  "assets, knowledge base, users, groups, entities, documents, " +
-  "rules and webhooks. Every action runs with the GLPI permissions of the connected user. Tools are annotated: read-only tools never " +
-  "change data; confirm with the user before any write. Deletes are disabled unless the server allows them and then require a reason. " +
-  "Use IDs returned by list/search tools; do not guess them. Ask the user before changing many records at once.";
+/** Every tool name a family registers, collected once by registering against a recorder. */
+const familyTools: { v1?: string[]; v2?: string[] } = {};
+
+function toolNamesOf(family: "v1" | "v2"): string[] {
+  const cached = familyTools[family];
+  if (cached) return cached;
+  const names: string[] = [];
+  const recorder = { registerTool: (name: string) => void names.push(name) } as unknown as McpServer;
+  if (family === "v1") registerV1Tools(recorder, { baseUrl: "", userToken: "" });
+  else registerV2Tools(recorder, { baseUrl: "", clientId: "", clientSecret: "", username: "", password: "", scope: "api" });
+  familyTools[family] = names;
+  return names;
+}
+
+/**
+ * Guidance for the model with every tool of both families registered. A server
+ * with a preset gets the same text cut down to its tools (see buildInstructions).
+ */
+export const DEFAULT_INSTRUCTIONS = buildInstructions([...toolNamesOf("v1"), ...toolNamesOf("v2")], { v1: true, v2: true });
 
 export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOptions = {}): CreatedServer {
   const fetchImpl = opts.fetchImpl ?? instance.fetchImpl;
   const v1 = fetchImpl ? { ...instance.v1, fetchImpl } : instance.v1;
   const v2 = fetchImpl ? { ...instance.v2, fetchImpl } : instance.v2;
+
+  // Tool selection, decided up front so the instructions name only registered tools.
+  const filterOptions: ToolFilterOptions = {
+    include: parseGlobList(instance.toolsInclude),
+    exclude: parseGlobList(instance.toolsExclude),
+    inToolsets: instance.toolsets?.length ? toolsetMatcher(instance.toolsets) : undefined,
+  };
+  const selected = [
+    ...(instance.enableV1 ? toolNamesOf("v1") : []),
+    ...(instance.enableV2 ? toolNamesOf("v2") : []),
+  ].filter((name) => isToolSelected(name, filterOptions));
+  const instructions =
+    opts.instructions ?? buildInstructions(selected, { v1: instance.enableV1, v2: instance.enableV2 });
 
   const server = new McpServer(
     {
@@ -81,7 +107,7 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
     ...opts.serverInfo,
     version: SERVER_VERSION,
     },
-    { instructions: opts.instructions ?? DEFAULT_INSTRUCTIONS },
+    { instructions },
   );
 
   // Write policy — annotations + read-only / delete gating for every tool below.
@@ -111,6 +137,8 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
     // Aggregates, not GLPI items: their payload must not be run through the
     // whitelist of the itemtype they happen to take as an argument.
     skipFormatting: ["glpi_count_items", "glpi_get_ticket_stats", "glpi_list_search_options"],
+    // Compact tables for listings in markdown (the JSON result keeps every field).
+    markdownViews: MARKDOWN_VIEWS,
     // Keys this layer adds to the result, declared so validating clients accept it.
     outputExtras: {
       count: z.number().int().optional().describe("Items in this page"),
@@ -129,11 +157,7 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
   });
 
   // Tool selection — installed last so a dropped tool never reaches the layers above.
-  const filter = installToolFilter(server, {
-    include: parseGlobList(instance.toolsInclude),
-    exclude: parseGlobList(instance.toolsExclude),
-    inToolsets: instance.toolsets?.length ? toolsetMatcher(instance.toolsets) : undefined,
-  });
+  const filter = installToolFilter(server, filterOptions);
 
   if (instance.enableV1) registerV1Tools(server, v1);
   if (instance.enableV2) registerV2Tools(server, v2);

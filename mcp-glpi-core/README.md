@@ -43,10 +43,15 @@ They compose in any order.
   (300) except in `FULL_TEXT_LISTS`, answer trimmed to `GLPI_MAX_RESPONSE_CHARS` (50000). The
   `note` names only the tool's own pagination parameters.
 - `errorResult` carries no `structuredContent`, so validating clients show the error message.
+- Markdown views (1.3.0): `installPayloadFormatting({ markdownViews })` maps a tool name to a row
+  projection (`columnView([{ label, from }])`, `from` = a key, candidate keys or a function). In
+  `format: "markdown"` with `fields: "essential"` the listing table shows only those columns; the
+  JSON result and `fields: "all"` keep every field. The `Ticket` whitelist keeps `requesters` and
+  `assigned` (people resolved by the server).
 
 ## Consuming it
 
-`@nextoolsolutions/mcp-glpi` declares it as `^1.2.0`. Inside the repo its lockfile links the
+`@nextoolsolutions/mcp-glpi` declares it as `^1.3.0`. Inside the repo its lockfile links the
 sibling folder, so build here first — `tsx` does not transpile TypeScript inside
 `node_modules`, the server loads the compiled `dist/`:
 

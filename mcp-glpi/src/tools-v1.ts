@@ -6,18 +6,19 @@ import {
 } from "@nextoolsolutions/mcp-glpi-core";
 import type { GlpiConfig } from "./glpi-client.js";
 import {
-  ACTOR_TYPE_NAMES,
+  ITIL_ITEM_NAMES,
   SOLUTION_NAMES,
   FOLLOWUP_NAMES,
   TASK_NAMES,
   VALIDATION_NAMES,
-  VALIDATION_STATUS_NAMES,
   addCodeName,
   addNames,
   nameFollowups,
+  nameItilRows,
   nameTasks,
   nameValidations,
 } from "./names.js";
+import { sessionLabels } from "./labels.js";
 import {
   MY_TICKET_ROLES,
   TICKET_SORT_FIELDS,
@@ -25,6 +26,7 @@ import {
   listMyTickets,
   listTicketsSorted,
   nameTicket,
+  nameTicketRows,
 } from "./ticket-lists.js";
 import { namedSearchRows } from "./search-columns.js";
 import { itemIdSchema } from "./ids.js";
@@ -225,8 +227,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description:
         "List GLPI tickets of the whole instance (every ticket the connected user may see), most recently " +
         "updated first by default. Filter by status (e.g. status: 'open' = not solved nor closed) and choose " +
-        "the sort column and direction. For the connected user's OWN tickets (\"my tickets\") use " +
-        "glpi_list_my_tickets instead.",
+        "the sort column and direction. Each row carries status_name, type_name, priority_name (in the GLPI " +
+        "user's language), category_name, and requesters and assigned technicians as {id, name}. For the " +
+        "connected user's OWN tickets (\"my tickets\") use glpi_list_my_tickets instead.",
       inputSchema: z.object({
         range: rangeSchema,
         expand_dropdowns: expandSchema,
@@ -243,7 +246,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       const { rows, total } = await listTicketsSorted(config, { range, expand_dropdowns, status, sort, order }, (p) =>
         listTickets(config, p),
       );
-      return jsonResult(total === undefined ? { data: rows } : { data: rows, total });
+      const named = await nameTicketRows(config, rows);
+      return jsonResult(total === undefined ? { data: named } : { data: named, total });
     }),
   );
 
@@ -290,7 +294,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Get ticket",
       description:
         "Retrieve a single ticket by ID. IDs come with names beside them (recipient_name, category_name, " +
-        "entity_name, status_name, type_name...). Requesters, technicians and observers are not ticket " +
+        "entity_name; status_name, type_name, priority_name in the GLPI user's language). Requesters, technicians and observers are not ticket " +
         "fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups).",
       inputSchema: z.object({
         ticketId: idSchema,
@@ -345,7 +349,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_changes",
     {
       title: "List changes",
-      description: "List change management items, most recently updated first by default.",
+      description:
+        "List change management items, most recently updated first by default, with status_name and " +
+        "priority_name (in the GLPI user's language) and category_name.",
       inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema, sort: itilSortSchema, order: orderSchema }),
       outputSchema: outData(),
     },
@@ -356,7 +362,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         sort: sort ?? "date_mod",
         order: order === "asc" ? "ASC" : "DESC",
       });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      return jsonResult({ data: await nameItilRows(config, rows, "Change") });
     }),
   );
 
@@ -364,11 +371,17 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_get_change",
     {
       title: "Get change",
-      description: "Retrieve a change by ID.",
+      description: "Retrieve a change by ID, with names beside the IDs and status/priority labels in the GLPI user's language.",
       inputSchema: z.object({ changeId: idSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ changeId, expand_dropdowns }) => jsonResult({ data: (await getChange(config, changeId, { expand_dropdowns })) ?? {} })),
+    wrap(async ({ changeId, expand_dropdowns }) => {
+      const item = await getChange(config, changeId, { expand_dropdowns });
+      if (!item || typeof item !== "object") return jsonResult({ data: {} });
+      if (expand_dropdowns) return jsonResult({ data: item });
+      const [named] = await nameItilRows(config, [item as Record<string, unknown>], "Change", ITIL_ITEM_NAMES);
+      return jsonResult({ data: named });
+    }),
   );
 
   server.registerTool(
@@ -414,7 +427,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_list_problems",
     {
       title: "List problems",
-      description: "List problem management items, most recently updated first by default.",
+      description:
+        "List problem management items, most recently updated first by default, with status_name and " +
+        "priority_name (in the GLPI user's language) and category_name.",
       inputSchema: z.object({ range: rangeSchema, expand_dropdowns: expandSchema, sort: itilSortSchema, order: orderSchema }),
       outputSchema: outData(),
     },
@@ -425,7 +440,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         sort: sort ?? "date_mod",
         order: order === "asc" ? "ASC" : "DESC",
       });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      return jsonResult({ data: await nameItilRows(config, rows, "Problem") });
     }),
   );
 
@@ -433,11 +449,17 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     "glpi_get_problem",
     {
       title: "Get problem",
-      description: "Retrieve a problem by ID.",
+      description: "Retrieve a problem by ID, with names beside the IDs and status/priority labels in the GLPI user's language.",
       inputSchema: z.object({ problemId: idSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
-    wrap(async ({ problemId, expand_dropdowns }) => jsonResult({ data: (await getProblem(config, problemId, { expand_dropdowns })) ?? {} })),
+    wrap(async ({ problemId, expand_dropdowns }) => {
+      const item = await getProblem(config, problemId, { expand_dropdowns });
+      if (!item || typeof item !== "object") return jsonResult({ data: {} });
+      if (expand_dropdowns) return jsonResult({ data: item });
+      const [named] = await nameItilRows(config, [item as Record<string, unknown>], "Problem", ITIL_ITEM_NAMES);
+      return jsonResult({ data: named });
+    }),
   );
 
   server.registerTool(
@@ -487,8 +509,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. " +
         "Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = " +
         "contains | equals | notequals | lessthan | morethan | under, link = AND | OR (omit on the first). " +
-        "Rows come keyed by search option ID ('1' = name, '2' = id on most itemtypes); named_columns=true " +
-        "keys them by option name instead. Use glpi_list_search_options to discover the option IDs.",
+        "Rows come keyed by the search option names in the GLPI user's language ('Título', 'ID', 'Status'...); " +
+        "named_columns=false keys them by option ID ('1', '2'...) instead. Use glpi_list_search_options to " +
+        "discover the option IDs for criteria, forcedisplay and sort.",
       inputSchema: z.object({
         itemtype: z.string().describe("Item type, e.g. Ticket, User, Change, Problem"),
         range: rangeSchema,
@@ -504,7 +527,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         named_columns: z
           .boolean()
           .optional()
-          .describe("Key each row by search option name ('Title', 'Status'...) instead of its numeric ID"),
+          .describe("Key each row by search option name (default true); false = by numeric option ID"),
       }),
       outputSchema: outRows(),
     },
@@ -518,7 +541,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       });
       const rows = Array.isArray(res?.data) ? res.data : [];
       const total = typeof res?.totalcount === "number" ? res.totalcount : rows.length;
-      const data = params.named_columns ? await namedSearchRows(config, params.itemtype, rows) : rows;
+      const data = params.named_columns === false ? rows : await namedSearchRows(config, params.itemtype, rows);
       return jsonResult({ data, total });
     }),
   );
@@ -588,7 +611,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "List ticket validations",
       description:
         "List approval/validation requests for a ticket, with requester and approver names " +
-        "(user_name, validator_name) and status_name (None, Waiting, Accepted, Refused).",
+        "(user_name, validator_name) and status_name in the GLPI user's language (status: 1 = not subject to " +
+        "approval, 2 = waiting, 3 = granted, 4 = refused).",
       inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
       outputSchema: outData(),
     },
@@ -1242,15 +1266,18 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "List ticket users",
       description:
         "List all users linked to a ticket (requesters, observers, assigned), with each person's name " +
-        "(user_name) beside users_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer.",
+        "(user_name) beside users_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({ ticketId: idSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
       const result = await listTicketUsers(config, ticketId);
       const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
-      const named = await addNames(config, rows, [{ field: "users_id", itemtype: "User", as: "user_name" }]);
-      return jsonResult({ data: addCodeName(named, "type", "type_name", ACTOR_TYPE_NAMES) });
+      const [named, labels] = await Promise.all([
+        addNames(config, rows, [{ field: "users_id", itemtype: "User", as: "user_name" }]),
+        sessionLabels(config),
+      ]);
+      return jsonResult({ data: addCodeName(named, "type", "type_name", labels.actor_type) });
     }),
   );
 
@@ -1294,15 +1321,18 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "List ticket groups",
       description:
         "List all groups linked to a ticket (requester, observer, assigned), with each group's name " +
-        "(group_name) beside groups_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer.",
+        "(group_name) beside groups_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({ ticketId: idSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
       const result = await listTicketGroups(config, ticketId);
       const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
-      const named = await addNames(config, rows, [{ field: "groups_id", itemtype: "Group", as: "group_name" }]);
-      return jsonResult({ data: addCodeName(named, "type", "type_name", ACTOR_TYPE_NAMES) });
+      const [named, labels] = await Promise.all([
+        addNames(config, rows, [{ field: "groups_id", itemtype: "Group", as: "group_name" }]),
+        sessionLabels(config),
+      ]);
+      return jsonResult({ data: addCodeName(named, "type", "type_name", labels.actor_type) });
     }),
   );
 
@@ -1593,6 +1623,13 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
   // ASSETS / INVENTORY (5 tools)
   // ===========================================================================
 
+  /** Names a person reads on an asset listing. */
+  const ASSET_LIST_NAMES = [
+    { field: "locations_id", itemtype: "Location", as: "location_name" },
+    { field: "states_id", itemtype: "State", as: "state_name" },
+    { field: "users_id", itemtype: "User", as: "user_name" },
+  ];
+
   const assetTypeSchema = z
     .enum(ASSET_TYPES)
     .describe("Asset itemtype, e.g. Computer, Monitor, Printer, NetworkEquipment, Software");
@@ -1603,7 +1640,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "List assets",
       description:
         "List assets of a given type (Computer, Monitor, Printer, NetworkEquipment, " +
-        "Peripheral, Phone, Software, Rack, Enclosure). Use glpi_search for filtered queries.",
+        "Peripheral, Phone, Software, Rack, Enclosure), with location_name, state_name and user_name beside " +
+        "the IDs. Use glpi_search for filtered queries.",
       inputSchema: z.object({
         asset_type: assetTypeSchema,
         range: rangeSchema,
@@ -1613,7 +1651,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     },
     wrap(async ({ asset_type, range, expand_dropdowns }) => {
       const result = await listAssets(config, asset_type, { range, expand_dropdowns });
-      return jsonResult({ data: Array.isArray(result) ? result : [] });
+      const rows = Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
+      return jsonResult({ data: expand_dropdowns ? rows : await addNames(config, rows, ASSET_LIST_NAMES) });
     }),
   );
 
@@ -1860,9 +1899,10 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       const named = await addNames(config, entries, (e) =>
         e.type === "task" ? TASK_NAMES : e.type === "solution" ? SOLUTION_NAMES : e.type === "validation" ? VALIDATION_NAMES : FOLLOWUP_NAMES,
       );
+      const labels = await sessionLabels(config);
       const labelled = named.map((e) =>
-        e.type === "validation" && VALIDATION_STATUS_NAMES[Number(e.status)] !== undefined
-          ? { ...e, status_name: VALIDATION_STATUS_NAMES[Number(e.status)] }
+        e.type === "validation" && labels.validation_status[Number(e.status)] !== undefined
+          ? { ...e, status_name: labels.validation_status[Number(e.status)] }
           : e,
       );
       return jsonResult({ data: labelled });

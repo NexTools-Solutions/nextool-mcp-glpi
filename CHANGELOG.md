@@ -5,6 +5,15 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-04
+- `glpi_search` returns column names (in the GLPI language) by default; `named_columns: false` for IDs.
+- v1 labels (status, type, priority, actor role, validation) in the GLPI session language, with GLPI's
+  own texts (pt_BR, pt_PT, es_ES, fr_FR, it_IT, de_DE; English fallback), matching the API v2.
+- Compact markdown tables per kind of listing (tickets: id, title, status, category, requester,
+  technician, priority, updated; timeline: one line per entry). JSON unchanged.
+- User/group creation and changes moved out of the `users` preset: administration with writes only in `admin`.
+- `instructions` name only the tools the server registered. Core 1.3.0.
+
 ## [3.4.0] - 2026-10-04
 - `glpi_list_my_tickets` ("my tickets": requester, assigned or observer; open, latest first) and
   `status`/`sort`/`order` on `glpi_list_tickets` (latest update first by default; same `status` on v2).

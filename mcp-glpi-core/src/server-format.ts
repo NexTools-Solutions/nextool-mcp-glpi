@@ -22,6 +22,7 @@ import {
   formatPayload,
   renderMarkdown,
   type FieldMode,
+  type MarkdownView,
   type OutputFormat,
 } from "./format.js";
 import {
@@ -219,6 +220,13 @@ export interface FormattingOptions {
    * formatted listing because the declared output has no such keys.
    */
   outputExtras?: Record<string, unknown>;
+  /**
+   * Conversational markdown views per tool name (see `columnView`). In
+   * `format: "markdown"` with the default `fields: "essential"`, the rows of a
+   * listing are projected onto the view's columns before the table is drawn;
+   * `fields: "all"` draws every column, and the JSON result is never projected.
+   */
+  markdownViews?: Record<string, MarkdownView>;
 }
 
 /**
@@ -236,6 +244,7 @@ export function installPayloadFormatting(server: object, opts: FormattingOptions
     skipFormatting = [],
     genericItemtypeTools: extraGeneric = [],
     outputExtras,
+    markdownViews = {},
   } = opts;
   const original = target.registerTool.bind(target);
   const itemtypeMap = { ...TOOL_ITEMTYPES, ...itemtypes };
@@ -309,11 +318,16 @@ export function installPayloadFormatting(server: object, opts: FormattingOptions
       const siblings = wrapped ? Object.entries(sc).filter(([k]) => !["data", "count", "note"].includes(k)) : [];
       const total = typeof sc.total === "number" ? sc.total : undefined;
 
+      const view = mode !== "all" ? markdownViews[name] : undefined;
       const build = (d: unknown, note: string | undefined) => {
         const count = Array.isArray(d) ? d.length : undefined;
         if (output === "markdown") {
+          const shown =
+            view && Array.isArray(d)
+              ? d.map((r) => (typeof r === "object" && r !== null && !Array.isArray(r) ? view(r as Record<string, unknown>) : r))
+              : d;
           const markdown = [
-            renderMarkdown(d),
+            renderMarkdown(shown),
             ...siblings.map(([k, v]) => `\n**${k}**: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`),
             note ? `\n_${note}_` : "",
           ]

@@ -1,6 +1,6 @@
 # MCP GLPI — Tools Reference
 
-**Version:** 3.4.0 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
+**Version:** 3.5.0 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
 **Last updated:** 2026-10-04 — generated from the running server (`tools/list`), not by hand.
 
 Every tool is prefixed with `glpi_`. The **Kind** column is the MCP annotation the server
@@ -17,6 +17,10 @@ publishes (`readOnlyHint` / `destructiveHint`) and also what the write policy en
 | `GLPI_REQUIRE_DELETE_REASON` | `true` | Destructive tools require `reason` (≥10 chars) |
 | `GLPI_IDEMPOTENCY_WINDOW` | `120` | Seconds in which an identical `create_`/`add_` call is replayed instead of repeated (`0` disables) |
 
+Labels of GLPI codes (`status_name`, `type_name`, `priority_name`, `urgency_name`, `impact_name`, the actor
+`type_name`, the validation `status_name`) follow the language of the GLPI session (`glpilanguage`): GLPI's own
+texts in pt_BR, pt_PT, es_ES, fr_FR, it_IT, de_DE, English otherwise — the same labels the API v2 returns.
+
 Instances pointing at a production GLPI that nobody should change through an assistant should run
 with `GLPI_READ_ONLY=true`.
 
@@ -27,7 +31,7 @@ Read tools take two extra parameters:
 | Parameter | Values | Default | Effect |
 |-----------|--------|---------|--------|
 | `fields` | `essential`, `all` | `essential` | `essential` drops GLPI's internal bookkeeping (SLA/OLA counters, delay stats, HAL links) and flattens TinyMCE richtext to plain text. `all` returns the raw payload |
-| `format` | `json`, `markdown` | `json` | `markdown` renders listings as a table and one item as `key: value` lines, in the text block and in `structuredContent` (`{data: "<markdown>", format: "markdown"}`) |
+| `format` | `json`, `markdown` | `json` | `markdown` renders listings as a table and one item as `key: value` lines, in the text block and in `structuredContent` (`{data: "<markdown>", format: "markdown"}`). Ticket, problem, change, asset, user, KB, followup/task and timeline listings use a compact column set (tickets: id, title, status, category, requester, technician, priority, updated; timeline: one line per entry with type, id, date, author, summary); `fields: "all"` draws every column. The JSON result keeps every field |
 
 | Env var | Default | Effect |
 |---------|---------|--------|
@@ -64,9 +68,9 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_tickets` | read | List GLPI tickets of the whole instance (every ticket the connected user may see), most recently updated first by default. Filter by status (e.g. status: 'open' = not solved nor closed) and choose the sort column and direction. For the connected user's OWN tickets ("my tickets") use glpi_list_my_tickets instead. |
+| `glpi_list_tickets` | read | List GLPI tickets of the whole instance (every ticket the connected user may see), most recently updated first by default. Filter by status (e.g. status: 'open' = not solved nor closed) and choose the sort column and direction. Each row carries status_name, type_name, priority_name (in the GLPI user's language), category_name, and requesters and assigned technicians as {id, name}. For the connected user's OWN tickets ("my tickets") use glpi_list_my_tickets instead. |
 | `glpi_list_my_tickets` | read | "My tickets": tickets of the connected GLPI user (or of users_id) where they are requester, assigned technician or observer. Defaults: open tickets only (not solved nor closed), most recently updated first. Each row names the people: requesters, assigned and observers as {id, name}, plus status_name and my_roles. Use this for "meus chamados", "my open tickets", "tickets assigned to me". |
-| `glpi_get_ticket` | read | Retrieve a single ticket by ID. IDs come with names beside them (recipient_name, category_name, entity_name, status_name, type_name...). Requesters, technicians and observers are not ticket fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups). |
+| `glpi_get_ticket` | read | Retrieve a single ticket by ID. IDs come with names beside them (recipient_name, category_name, entity_name; status_name, type_name, priority_name in the GLPI user's language). Requesters, technicians and observers are not ticket fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups). |
 | `glpi_create_ticket` | write | Create a new ticket. Common fields: name (title), content (description), entities_id, users_id_requester, itilcategories_id, type (1=Incident, 2=Request), urgency, impact, priority. |
 | `glpi_update_ticket` | write | Update an existing ticket by ID. |
 
@@ -74,10 +78,10 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_ticket_users` | read | List all users linked to a ticket (requesters, observers, assigned), with each person's name (user_name) beside users_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer. |
+| `glpi_list_ticket_users` | read | List all users linked to a ticket (requesters, observers, assigned), with each person's name (user_name) beside users_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_add_ticket_user` | write | Add a user to a ticket as requester, observer, or assigned. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_delete_ticket_user` | destructive | Remove a user-ticket link by Ticket_User ID (get the ID from glpi_list_ticket_users). |
-| `glpi_list_ticket_groups` | read | List all groups linked to a ticket (requester, observer, assigned), with each group's name (group_name) beside groups_id and type_name. type: 1=Requester, 2=Assigned, 3=Observer. |
+| `glpi_list_ticket_groups` | read | List all groups linked to a ticket (requester, observer, assigned), with each group's name (group_name) beside groups_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_add_ticket_group` | write | Add a group to a ticket as requester, observer, or assigned. type: 1=Requester, 2=Assigned, 3=Observer. |
 | `glpi_delete_ticket_group` | destructive | Remove a group-ticket link by Group_Ticket ID (get the ID from glpi_list_ticket_groups). |
 
@@ -109,7 +113,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_ticket_validations` | read | List approval/validation requests for a ticket, with requester and approver names (user_name, validator_name) and status_name (None, Waiting, Accepted, Refused). |
+| `glpi_list_ticket_validations` | read | List approval/validation requests for a ticket, with requester and approver names (user_name, validator_name) and status_name in the GLPI user's language (status: 1 = not subject to approval, 2 = waiting, 3 = granted, 4 = refused). |
 | `glpi_create_ticket_validation` | write | Create an approval request assigning a validator (users_id_validate). |
 | `glpi_update_ticket_validation` | write | Approve/refuse a validation (status: accepted/refused) or change the approver. |
 | `glpi_delete_ticket_validation` | destructive | Remove a validation request by ID. |
@@ -118,8 +122,8 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_changes` | read | List change management items, most recently updated first by default. |
-| `glpi_get_change` | read | Retrieve a change by ID. |
+| `glpi_list_changes` | read | List change management items, most recently updated first by default, with status_name and priority_name (in the GLPI user's language) and category_name. |
+| `glpi_get_change` | read | Retrieve a change by ID, with names beside the IDs and status/priority labels in the GLPI user's language. |
 | `glpi_create_change` | write | Create a new change. Common fields: name, content, entities_id, users_id_requester. |
 | `glpi_update_change` | write | Update an existing change by ID. |
 
@@ -127,8 +131,8 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_problems` | read | List problem management items, most recently updated first by default. |
-| `glpi_get_problem` | read | Retrieve a problem by ID. |
+| `glpi_list_problems` | read | List problem management items, most recently updated first by default, with status_name and priority_name (in the GLPI user's language) and category_name. |
+| `glpi_get_problem` | read | Retrieve a problem by ID, with names beside the IDs and status/priority labels in the GLPI user's language. |
 | `glpi_create_problem` | write | Create a new problem. Common fields: name, content, entities_id, users_id_requester. |
 | `glpi_update_problem` | write | Update an existing problem by ID. |
 
@@ -136,7 +140,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = contains \| equals \| notequals \| lessthan \| morethan \| under, link = AND \| OR (omit on the first). Rows come keyed by search option ID ('1' = name, '2' = id on most itemtypes); named_columns=true keys them by option name instead. Use glpi_list_search_options to discover the option IDs. |
+| `glpi_search` | read | Search GLPI items with criteria. itemtype: Ticket, User, Change, Problem, Computer, etc. Each criterion is {field, searchtype, value, link}: field = search option ID, searchtype = contains \| equals \| notequals \| lessthan \| morethan \| under, link = AND \| OR (omit on the first). Rows come keyed by the search option names in the GLPI user's language ('Título', 'ID', 'Status'...); named_columns=false keys them by option ID ('1', '2'...) instead. Use glpi_list_search_options to discover the option IDs for criteria, forcedisplay and sort. |
 | `glpi_search_user_by_email` | read | Find users by exact email address (returns the user items: id, login, real name, first name...). |
 | `glpi_list_search_options` | read | List available search fields for an itemtype. Critical for building search criteria with glpi_search. Returns field IDs, names, and types. |
 | `glpi_count_items` | read | Count matching items without transferring them — answers 'how many' in one cheap call. Use glpi_list_search_options to discover criteria field IDs. |
@@ -146,7 +150,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 
 | Tool | Kind | Description |
 |------|------|-------------|
-| `glpi_list_assets` | read | List assets of a given type (Computer, Monitor, Printer, NetworkEquipment, Peripheral, Phone, Software, Rack, Enclosure). Use glpi_search for filtered queries. |
+| `glpi_list_assets` | read | List assets of a given type (Computer, Monitor, Printer, NetworkEquipment, Peripheral, Phone, Software, Rack, Enclosure), with location_name, state_name and user_name beside the IDs. Use glpi_search for filtered queries. |
 | `glpi_get_asset` | read | Retrieve a single asset by type and ID. For hardware detail use glpi_get_asset_details. |
 | `glpi_get_asset_details` | read | Enriched asset view in one request: operating system, processors, memory and disks by default. Ask for sections ['softwares'] or ['networkports'] explicitly — on an inventoried host those are the bulk of the payload. Dropdown IDs come resolved to names. |
 | `glpi_create_asset` | write | Create an asset. Common fields: name, entities_id, serial, otherserial, locations_id, states_id, manufacturers_id, users_id, comment. |

@@ -3,7 +3,7 @@
   "name": "io.github.NexTools-Solutions/mcp-glpi",
   "title": "NexTool MCP for GLPI",
   "description": "MCP server for GLPI: tickets, ITIL, assets, knowledge base. GLPI 10/11. Not affiliated with Teclib'.",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "repository": {
     "url": "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
     "source": "github",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@nextoolsolutions/mcp-glpi",
-      "version": "3.4.0",
+      "version": "3.5.0",
       "transport": {
         "type": "stdio"
       },

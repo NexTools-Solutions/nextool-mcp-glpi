@@ -140,7 +140,7 @@ describe("instanceFromConfig", () => {
   });
 
   it("exposes the release version", () => {
-    assert.equal(SERVER_VERSION, "3.4.0");
+    assert.equal(SERVER_VERSION, "3.5.0");
   });
 });
 
@@ -165,9 +165,14 @@ describe("fetchImpl through createGlpiServer", () => {
 
     assert.notEqual(res.isError, true, res.content[0]?.text);
     assert.match(res.content[0].text, /Printer down/);
+    // The ticket, then the session language for the status/type labels (cached per credential).
     assert.deepEqual(
       calls.map((c) => c.url),
-      ["https://glpi.example.com/apirest.php/initSession", "https://glpi.example.com/apirest.php/Ticket/7"],
+      [
+        "https://glpi.example.com/apirest.php/initSession",
+        "https://glpi.example.com/apirest.php/Ticket/7",
+        "https://glpi.example.com/apirest.php/getFullSession",
+      ],
     );
     for (const c of calls) assert.equal(c.init.redirect, "manual");
     assert.equal((calls[1].init.headers as Record<string, string>)["Session-Token"], "sess-1");
@@ -184,7 +189,7 @@ describe("fetchImpl through createGlpiServer", () => {
     );
     await callTool(client, "glpi_get_ticket", { ticketId: 1 });
     await client.close();
-    assert.equal(used, 2);
+    assert.equal(used, 3, "initSession, the ticket and getFullSession (labels)");
   });
 
   it("v1: a 302 on initSession is reported, not followed", async () => {
@@ -445,7 +450,7 @@ describe("serverInfo and instructions", () => {
   it("sends the default identity and instructions, and lets a host override title, description, website and icons", async () => {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
-    const { instanceFromConfig, createGlpiServer, DEFAULT_INSTRUCTIONS, SERVER_VERSION } = await import("../src/lib.js");
+    const { instanceFromConfig, createGlpiServer, buildInstructions, DEFAULT_INSTRUCTIONS, SERVER_VERSION } = await import("../src/lib.js");
     const inst = instanceFromConfig({ id: "x", v1: { url: "https://glpi.example.com", userToken: "u" } });
     for (const [opts, title] of [[{}, "NexTool MCP for GLPI"], [{ serverInfo: { title: "Host", description: "d", websiteUrl: "https://host.example", icons: [{ src: "https://host.example/i.png", mimeType: "image/png", sizes: ["180x180"] }] }, instructions: "hi" }, "Host"]] as const) {
       const { server } = createGlpiServer(inst, opts as never);
@@ -455,7 +460,13 @@ describe("serverInfo and instructions", () => {
       const info = client.getServerVersion()!;
       assert.equal(info.title, title);
       assert.equal(info.version, SERVER_VERSION, "version is never overridden");
-      assert.equal(client.getInstructions(), (opts as { instructions?: string }).instructions ?? DEFAULT_INSTRUCTIONS);
+      // v1-only server: the default text is cut down to the v1 tools (see conversation.test.ts).
+      const expected = (opts as { instructions?: string }).instructions ?? buildInstructions(
+        (await client.listTools()).tools.map((t) => t.name),
+        { v1: true, v2: false },
+      );
+      assert.equal(client.getInstructions(), expected);
+      assert.ok(DEFAULT_INSTRUCTIONS.includes("glpi_v2_"), "the exported default covers both families");
       if (title === "Host") {
         assert.equal(info.websiteUrl, "https://host.example");
         assert.equal(info.icons?.[0].src, "https://host.example/i.png");

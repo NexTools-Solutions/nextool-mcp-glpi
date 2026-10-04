@@ -84,6 +84,8 @@ export const ESSENTIAL_FIELDS: Record<string, string[]> = {
     "priority", "itilcategories_id", "requesttypes_id", "locations_id",
     "users_id_recipient", "users_id_lastupdater", "date", "date_creation", "date_mod",
     "solvedate", "closedate", "time_to_resolve", "time_to_own", "global_validation",
+    // People the server resolves on ticket listings ({id, name} lists).
+    "requesters", "assigned",
   ],
   Change: [
     "id", "entities_id", "name", "content", "status", "urgency", "impact", "priority",
@@ -336,6 +338,50 @@ function renderObject(obj: Record<string, unknown>): string {
       return s.includes("\n") ? `**${k}**:\n${s.replace(/^/gm, "  ")}` : `**${k}**: ${s}`;
     })
     .join("\n");
+}
+
+/**
+ * One column of a conversational markdown view: `label` heads the column and
+ * `from` says where the value comes from — a key, a list of candidate keys
+ * (the first non-empty one wins) or a function of the row.
+ */
+export interface MarkdownColumn {
+  label: string;
+  from: string | readonly string[] | ((row: Record<string, unknown>) => unknown);
+}
+
+/** Projects a full row onto the columns of a view. */
+export type MarkdownView = (row: Record<string, unknown>) => Record<string, unknown>;
+
+function isEmptyValue(v: unknown): boolean {
+  return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+}
+
+/**
+ * Builds a view from a column list. A listing in markdown is read in a
+ * conversation: the 22 columns of a raw ticket row (bare IDs such as
+ * `users_id_lastupdater: 368` among them) bury the 8 a person scans for.
+ * The JSON result keeps every field; only the markdown table is projected.
+ */
+export function columnView(columns: readonly MarkdownColumn[]): MarkdownView {
+  return (row) => {
+    const out: Record<string, unknown> = {};
+    for (const col of columns) {
+      let v: unknown;
+      if (typeof col.from === "function") v = col.from(row);
+      else {
+        const keys = typeof col.from === "string" ? [col.from] : col.from;
+        for (const k of keys) {
+          if (!isEmptyValue(row[k])) {
+            v = row[k];
+            break;
+          }
+        }
+      }
+      out[col.label] = v ?? "";
+    }
+    return out;
+  };
 }
 
 /** Renders a payload as markdown; falls back to JSON for non-tabular shapes. */

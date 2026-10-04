@@ -14,21 +14,9 @@
  *     return user IDs (an array when there are several).
  */
 
-import {
-  getFullSession,
-  search,
-  searchItems,
-  v1CredentialKey,
-  type GlpiConfig,
-} from "./glpi-client.js";
-import {
-  addCodeName,
-  addNames,
-  resolveNames,
-  TICKET_NAMES,
-  TICKET_STATUS_NAMES,
-  TICKET_TYPE_NAMES,
-} from "./names.js";
+import { search, searchItems, type GlpiConfig } from "./glpi-client.js";
+import { sessionInfo, sessionLabels } from "./labels.js";
+import { addLabels, addNames, itilLabelSpecs, resolveNames, TICKET_NAMES, type NameSpec } from "./names.js";
 
 // ---------------------------------------------------------------------------
 // Status filter
@@ -165,12 +153,78 @@ export async function listTicketsSorted(
 // glpi_get_ticket names
 // ---------------------------------------------------------------------------
 
-/** Adds recipient/last updater/category/entity/request type/location names and status/type labels. */
+/**
+ * Adds recipient/last updater/category/entity/request type/location names and the
+ * status/type/priority/urgency/impact labels (in the GLPI user's language).
+ */
 export async function nameTicket(config: GlpiConfig, ticket: Record<string, unknown>): Promise<Record<string, unknown>> {
-  let [row] = await addNames(config, [ticket], TICKET_NAMES);
-  [row] = addCodeName([row], "status", "status_name", TICKET_STATUS_NAMES);
-  [row] = addCodeName([row], "type", "type_name", TICKET_TYPE_NAMES);
-  return row;
+  const [[row], labels] = await Promise.all([addNames(config, [ticket], TICKET_NAMES), sessionLabels(config)]);
+  return addLabels([row], labels, itilLabelSpecs("Ticket"))[0];
+}
+
+// ---------------------------------------------------------------------------
+// glpi_list_tickets names
+// ---------------------------------------------------------------------------
+
+/** Names on a ticket listing: the category beside its ID. */
+const TICKET_LIST_NAMES: NameSpec[] = [{ field: "itilcategories_id", itemtype: "ITILCategory", as: "category_name" }];
+
+/** IDs per actor search on one request: keeps the query string well under URL limits. */
+const ACTOR_CHUNK = 50;
+
+/**
+ * Requesters and assigned technicians of a page of tickets, in one search per
+ * 50 tickets (criteria "id = a OR id = b ..." with options 4 and 5 displayed)
+ * instead of one Ticket_User listing per ticket. A failed search leaves the
+ * people out; the ticket rows themselves are not affected.
+ */
+async function ticketActors(
+  config: GlpiConfig,
+  ids: number[],
+): Promise<Map<number, { requesters: Person[]; assigned: Person[] }>> {
+  const out = new Map<number, { requesters: Person[]; assigned: Person[] }>();
+  const raw: Record<string, unknown>[] = [];
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += ACTOR_CHUNK) chunks.push(ids.slice(i, i + ACTOR_CHUNK));
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const res = await search(config, "Ticket", {
+          criteria: chunk.map((tid, i) => ({ ...(i > 0 ? { link: "OR" } : {}), field: 2, searchtype: "equals", value: tid })),
+          forcedisplay: [2, 4, 5],
+          range: `0-${chunk.length - 1}`,
+        });
+        raw.push(...(res?.data ?? []));
+      } catch {
+        // People are an extra: without them the listing still answers.
+      }
+    }),
+  );
+  const names = await resolveNames(config, "User", [...new Set(raw.flatMap((r) => [...userIds(r["4"]), ...userIds(r["5"])]))]);
+  for (const r of raw) {
+    const tid = Number(r["2"]);
+    if (Number.isInteger(tid)) out.set(tid, { requesters: people(r["4"], names), assigned: people(r["5"], names) });
+  }
+  return out;
+}
+
+/**
+ * Ticket listing rows with what a person reads: status/type/priority labels in
+ * the GLPI user's language, the category name, and the requesters and assigned
+ * technicians as {id, name}. IDs stay; names are added beside them.
+ */
+export async function nameTicketRows(config: GlpiConfig, rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => Number(r.id)).filter((n) => Number.isInteger(n) && n > 0);
+  const [named, labels, actors] = await Promise.all([
+    addNames(config, rows, TICKET_LIST_NAMES),
+    sessionLabels(config),
+    ticketActors(config, ids),
+  ]);
+  return addLabels(named, labels, itilLabelSpecs("Ticket")).map((r) => {
+    const a = actors.get(Number(r.id));
+    return a ? { ...r, requesters: a.requesters, assigned: a.assigned } : r;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -190,9 +244,6 @@ const ROLE_OPTION: Record<Exclude<MyTicketRole, "any">, number> = {
 /** Columns asked of the search: id, title, status, type, priority, dates, category, entity, actors, groups. */
 const MY_TICKET_COLUMNS = [2, 1, 12, 14, 3, 15, 19, 7, 80, 4, 5, 66, 71, 8];
 
-const SESSION_USER_TTL_MS = 5 * 60_000;
-const sessionUsers = new Map<string, { user: SessionUser; expires: number }>();
-
 export interface SessionUser {
   id: number;
   name: string | null;
@@ -200,17 +251,9 @@ export interface SessionUser {
 
 /** The connected user (getFullSession -> glpiID), cached per credential for a few minutes. */
 export async function sessionUser(config: GlpiConfig): Promise<SessionUser> {
-  const key = v1CredentialKey(config);
-  const hit = sessionUsers.get(key);
-  if (hit && hit.expires > Date.now()) return hit.user;
-  const res = (await getFullSession(config)) as { session?: Record<string, unknown> } | undefined;
-  const s = res?.session ?? {};
-  const userId = Number(s.glpiID);
-  if (!Number.isInteger(userId) || userId <= 0) throw new Error("GLPI session has no user (glpiID missing)");
-  const friendly = [s.glpifriendlyname, s.glpiname].find((v) => typeof v === "string" && v.trim()) as string | undefined;
-  const user = { id: userId, name: friendly ?? null };
-  sessionUsers.set(key, { user, expires: Date.now() + SESSION_USER_TTL_MS });
-  return user;
+  const info = await sessionInfo(config);
+  if (info.userId === null) throw new Error("GLPI session has no user (glpiID missing)");
+  return { id: info.userId, name: info.userName };
 }
 
 export interface MyTicketParams {
@@ -235,6 +278,7 @@ export interface MyTicketRow {
   type: unknown;
   type_name?: string;
   priority: unknown;
+  priority_name?: string;
   date: unknown;
   date_mod: unknown;
   category: unknown;
@@ -256,6 +300,13 @@ function userIds(v: unknown): number[] {
   return asList(v)
     .map((x) => (typeof x === "number" ? x : typeof x === "string" && /^\d+$/.test(x) ? Number(x) : NaN))
     .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+/** Actor search column -> people; an anonymous requester (email only) has no user ID: keep what GLPI shows. */
+function people(v: unknown, names: Map<number, string | null>): Person[] {
+  const ids = userIds(v);
+  const loose = asList(v).filter((x) => !(typeof x === "number" || (typeof x === "string" && /^\d+$/.test(x))));
+  return [...ids.map((i) => ({ id: i, name: names.get(i) ?? null })), ...loose.map((x) => ({ id: null, name: String(x) }))];
 }
 
 /**
@@ -302,18 +353,15 @@ export async function listMyTickets(
   const raw = res?.data ?? [];
 
   const allIds = raw.flatMap((r) => [...userIds(r["4"]), ...userIds(r["5"]), ...userIds(r["66"])]);
-  const names = await resolveNames(config, "User", [...new Set([user.id, ...allIds])]);
-  const people = (v: unknown): Person[] => {
-    const ids = userIds(v);
-    // An anonymous requester (email only) has no user ID: keep what GLPI shows.
-    const loose = asList(v).filter((x) => !(typeof x === "number" || (typeof x === "string" && /^\d+$/.test(x))));
-    return [...ids.map((i) => ({ id: i, name: names.get(i) ?? null })), ...loose.map((x) => ({ id: null, name: String(x) }))];
-  };
+  const [names, labels] = await Promise.all([
+    resolveNames(config, "User", [...new Set([user.id, ...allIds])]),
+    sessionLabels(config),
+  ]);
 
   const rows: MyTicketRow[] = raw.map((r) => {
-    const requesters = people(r["4"]);
-    const assigned = people(r["5"]);
-    const observers = people(r["66"]);
+    const requesters = people(r["4"], names);
+    const assigned = people(r["5"], names);
+    const observers = people(r["66"], names);
     const my_roles = [
       requesters.some((p) => p.id === user.id) && "requester",
       assigned.some((p) => p.id === user.id) && "assigned",
@@ -325,10 +373,11 @@ export async function listMyTickets(
       id: r["2"],
       name: r["1"],
       status,
-      status_name: TICKET_STATUS_NAMES[Number(status)],
+      status_name: labels.ticket_status[Number(status)],
       type,
-      type_name: TICKET_TYPE_NAMES[Number(type)],
+      type_name: labels.ticket_type[Number(type)],
       priority: r["3"],
+      priority_name: labels.priority[Number(r["3"])],
       date: r["15"],
       date_mod: r["19"],
       category: r["7"] ?? null,
