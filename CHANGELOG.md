@@ -5,6 +5,9 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-10-04
+- Descriptions and npm keywords centered on GLPI (tickets, ITIL, assets, knowledge base, GLPI 10/11).
+
 ## [3.3.0] - 2026-10-04
 - Configurable server identity (`serverInfo`) and model `instructions` in `initialize`; default instructions and website.
 

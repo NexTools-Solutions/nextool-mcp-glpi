@@ -26,7 +26,7 @@ import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 
-export const SERVER_VERSION = "3.3.0";
+export const SERVER_VERSION = "3.3.1";
 
 export interface CreatedServer {
   server: McpServer;
@@ -75,10 +75,7 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
     title: "NexTool MCP for GLPI",
     websiteUrl: "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
     description:
-      "NexTool MCP server that connects AI assistants to GLPI — REST API v1 (glpi_*: tickets, changes, problems, unified timeline, " +
-      "validations, assets and reservations, webhooks, users, groups, entities, documents, " +
-      "knowledge base, rules and search) and GLPI 11 API v2 (glpi_v2_*), each enabled by its own " +
-      "credentials. Read tools return trimmed payloads; writes and deletes are gated by policy.",
+      "MCP server for GLPI by NexTool Solutions: connects AI assistants to the GLPI service desk / ITSM (GLPI 10 and 11, REST API v1 tools glpi_* and GLPI 11 API v2 tools glpi_v2_*). GLPI tickets (search, create, update, follow-ups, tasks, solutions, approvals/validations, timeline, statistics), GLPI problems and changes (ITIL), GLPI assets and inventory (computers, monitors, printers, network equipment, peripherals, phones, software, racks) and reservations, GLPI knowledge base, users, groups, entities, locations, ITIL categories, follow-up templates, documents, rules and webhooks, and GLPI search. Read tools return trimmed payloads; writes and deletes are gated by policy.",
     ...opts.serverInfo,
     version: SERVER_VERSION,
     },

@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-10-04
+
+### Changed
+- Descriptions (server `initialize`, npm, MCP Registry) and npm keywords centered on GLPI (tickets, ITIL, assets, knowledge base, GLPI 10/11), so searches for GLPI find this server.
+
 ## [3.3.0] - 2026-10-04
 
 ### Added
