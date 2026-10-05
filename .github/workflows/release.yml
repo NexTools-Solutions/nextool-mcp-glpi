@@ -1,5 +1,7 @@
 # Tag v<version> -> tests -> npm (with provenance) -> official MCP Registry.
-#   npm: repository secret NPM_TOKEN (granular automation token for the @nextoolsolutions scope)
+#   npm: trusted publishing (OIDC, no token) once each package lists this repo + release.yml as a trusted publisher
+#     on npmjs.com; until then the repository secret NPM_TOKEN is used. npm CLI >= 11.5.1 tries OIDC first and falls
+#     back to the token, so the secret can be deleted after the first OIDC publish succeeds.
 #   MCP Registry: DNS authentication for com.nextoolsolutions/* with repository secret MCP_PRIVATE_KEY
 #     (Ed25519 private key seed in hex; public key in a TXT record on the apex of nextoolsolutions.com)
 name: release
@@ -18,6 +20,8 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing support (>= 11.5.1)
+        run: npm install -g npm@^11.5.1 && npm --version
       - name: test core
         working-directory: mcp-glpi-core
         run: npm ci && npm run build && npm test
