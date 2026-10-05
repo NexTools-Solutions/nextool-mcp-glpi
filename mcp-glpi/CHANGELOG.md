@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-10-04
+
+Distribution metadata only; no change in tools or behaviour.
+
+### Changed
+- **MCP Registry name is now `com.nextoolsolutions/glpi`** (`mcpName` in `package.json` and `name` in
+  `server.json`), verified by the `nextoolsolutions.com` domain instead of the GitHub namespace
+  `io.github.NexTools-Solutions/mcp-glpi`, which was never published.
+- `server.json` lists the hosted server as a remote (`streamable-http`,
+  `https://mcp.nextoolsolutions.com/mcp`, sign-in by OAuth) beside the npm package, and `websiteUrl`
+  points to `https://nextoolsolutions.com/mcp`.
+
 ## [3.5.1] - 2026-10-04
 
 Fixes from the live check of 3.5.0 (GLPI 11.0.7, API v1 and v2, user language pt_BR), read-only.

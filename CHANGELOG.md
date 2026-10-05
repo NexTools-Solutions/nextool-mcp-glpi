@@ -5,6 +5,14 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-10-04
+- MCP Registry name `com.nextoolsolutions/glpi` (domain-verified) with the hosted server as a remote
+  (`https://mcp.nextoolsolutions.com/mcp`); the release workflow signs in to the registry by DNS
+  (secret `MCP_PRIVATE_KEY`) instead of GitHub OIDC.
+- Directory files: `glama.json` (Glama maintainers), `Dockerfile` (stdio server, starts and lists tools
+  without GLPI credentials), Cursor plugin (`.cursor-plugin/plugin.json` + `mcp.json`) and an
+  "Add to Cursor" link in the README. No change in tools or behaviour.
+
 ## [3.5.1] - 2026-10-04
 - `glpi_v2_list_timeline` honours `start`/`limit` (the endpoint ignores them; the page is cut by the
   server) and returns `total`.

@@ -1,6 +1,6 @@
 # MCP GLPI — Tools Reference
 
-**Version:** 3.5.1 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
+**Version:** 3.5.2 | **Tools:** 111 (60 read / 42 write / 9 destructive) | **Resources:** 4 | **Prompts:** 4
 **Last updated:** 2026-10-04 — generated from the running server (`tools/list`), not by hand.
 
 Every tool is prefixed with `glpi_`. The **Kind** column is the MCP annotation the server

@@ -1,13 +1,14 @@
 # Tag v<version> -> tests -> npm (with provenance) -> official MCP Registry.
 #   npm: repository secret NPM_TOKEN (granular automation token for the @nextoolsolutions scope)
-#   MCP Registry: GitHub OIDC (namespace io.github.NexTools-Solutions), no secret needed
+#   MCP Registry: DNS authentication for com.nextoolsolutions/* with repository secret MCP_PRIVATE_KEY
+#     (Ed25519 private key seed in hex; public key in a TXT record on the apex of nextoolsolutions.com)
 name: release
 on:
   push:
     tags: ["v*"]
 permissions:
   contents: read
-  id-token: write
+  id-token: write # npm provenance
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -36,7 +37,9 @@ jobs:
           done
       - name: publish to the MCP Registry
         working-directory: mcp-glpi
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-          ./mcp-publisher login github-oidc
+          ./mcp-publisher login dns --domain nextoolsolutions.com --private-key "$MCP_PRIVATE_KEY"
           ./mcp-publisher publish

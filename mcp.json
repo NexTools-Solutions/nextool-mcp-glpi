@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "nextool-glpi": {
+      "url": "https://mcp.nextoolsolutions.com/mcp"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "nextool-glpi",
+  "description": "GLPI service desk in Cursor: search, create and update GLPI tickets, follow-ups and solutions, ITIL problems and changes, assets and the knowledge base (GLPI 10 and 11). Connects to the hosted NexTool server with sign-in by your NexTool account (OAuth).",
+  "author": {
+    "name": "NexTool Solutions"
+  },
+  "homepage": "https://nextoolsolutions.com/mcp",
+  "repository": "https://github.com/NexTools-Solutions/nextool-mcp-glpi",
+  "license": "MIT",
+  "keywords": [
+    "glpi",
+    "itsm",
+    "service-desk",
+    "helpdesk",
+    "tickets",
+    "itil",
+    "mcp"
+  ],
+  "logo": "assets/logo.png"
+}

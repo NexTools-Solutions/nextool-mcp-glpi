@@ -88,6 +88,16 @@ Use the same `command`/`args`/`env` block:
 - **Windsurf:** `~/.codeium/windsurf/mcp_config.json`.
 - **VS Code:** `.vscode/mcp.json`. The top-level key there is `"servers"` instead of `"mcpServers"`, and each entry also takes `"type": "stdio"`.
 
+### Docker
+
+The [`Dockerfile`](Dockerfile) builds the stdio server from this repository (`node:22-alpine`, no credentials inside).
+Without `GLPI_*` variables it still starts and lists its tools, which is what directories that inspect servers need.
+
+```bash
+docker build -t nextool-mcp-glpi .
+docker run -i --rm -e GLPI_URL=https://glpi.example.com -e GLPI_USER_TOKEN=xxx -e GLPI_TOOLSETS=core nextool-mcp-glpi
+```
+
 ### Shared HTTP server (optional)
 
 To serve several users or GLPI instances from one machine, run `mcp-glpi/dist/http.js` (Streamable HTTP, Bearer keys stored as SHA-256 hashes). See ["Two ways to run"](mcp-glpi/README.md) in the package README.
@@ -109,7 +119,8 @@ Your GLPI must be reachable from the internet. If it only accepts known IPs, the
 | Claude (web, desktop, mobile) | *Settings → Connectors → Add custom connector* → URL `https://mcp.nextoolsolutions.com/mcp` → sign in with your NexTool account and authorize |
 | ChatGPT | Add a connector/app with the same URL (developer mode while the app is in review) |
 | Claude Code | `claude mcp add --transport http nextool https://mcp.nextoolsolutions.com/mcp`, then `/mcp` to sign in. Or use an API key from *My account → NexTool MCP*: add `--header "Authorization: Bearer nxm_…"` |
-| Cursor / VS Code | Server URL `https://mcp.nextoolsolutions.com/mcp` with header `Authorization: Bearer nxm_…` |
+| Cursor | [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=nextool-glpi&config=eyJ1cmwiOiJodHRwczovL21jcC5uZXh0b29sc29sdXRpb25zLmNvbS9tY3AifQ==) (server URL `https://mcp.nextoolsolutions.com/mcp`, sign-in by OAuth), or the same URL with header `Authorization: Bearer nxm_…` |
+| VS Code | Server URL `https://mcp.nextoolsolutions.com/mcp` with header `Authorization: Bearer nxm_…` |
 
 Connect your GLPI once at *app.nextoolsolutions.com → My account → NexTool MCP* (GLPI URL plus the tokens from step 1). Then click **Test connection**.
 
@@ -130,6 +141,22 @@ Connect your GLPI once at *app.nextoolsolutions.com → My account → NexTool M
 | `ERROR_NOT_ALLOWED_IP` | the API client restricts IPs: allow the address the MCP connects from |
 | HTML instead of JSON | `GLPI_URL` points to a login page or proxy, not to the GLPI root |
 | "redirect not followed" | `GLPI_URL` redirects (e.g. http→https or another host): use the final URL |
+
+## Directories and release
+
+- **MCP Registry:** `com.nextoolsolutions/glpi` ([`mcp-glpi/server.json`](mcp-glpi/server.json)): the npm package
+  (stdio) and the hosted server as a remote.
+- **Cursor plugin:** [`.cursor-plugin/plugin.json`](.cursor-plugin/plugin.json) + [`mcp.json`](mcp.json) (hosted
+  server, OAuth). Direct install link: `cursor://anysphere.cursor-deeplink/mcp/install?name=nextool-glpi&config=eyJ1cmwiOiJodHRwczovL21jcC5uZXh0b29sc29sdXRpb25zLmNvbS9tY3AifQ==`.
+- **Glama:** [`glama.json`](glama.json) names the maintainers; the [`Dockerfile`](Dockerfile) is the build they run.
+
+Pushing a tag `v<mcp-glpi version>` runs [`release.yml`](.github/workflows/release.yml): tests, npm (versions already
+published are skipped), then the MCP Registry. Repository secrets:
+
+| Secret | What it is |
+|---|---|
+| `NPM_TOKEN` | npm granular automation token with publish rights on the `@nextoolsolutions` scope |
+| `MCP_PRIVATE_KEY` | Ed25519 private key (32-byte seed, hex) for the registry DNS login on `nextoolsolutions.com`; its public key is the `v=MCPv1; k=ed25519; p=…` TXT record on the domain apex |
 
 ## Development
 

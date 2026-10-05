@@ -28,7 +28,7 @@ import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 
-export const SERVER_VERSION = "3.5.1";
+export const SERVER_VERSION = "3.5.2";
 
 export interface CreatedServer {
   server: McpServer;
