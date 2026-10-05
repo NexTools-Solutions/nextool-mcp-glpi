@@ -14,7 +14,7 @@ supports both the REST API v1 and the GLPI 11 API v2 in one server.
 
 **Two ways to use it:**
 
-- **Hosted, early access:** nothing to install. Sign in with a NexTool account, then add one URL as a connector in Claude or ChatGPT. Request access at **https://nextoolsolutions.com/mcp**.
+- **Hosted, early access:** nothing to install. Sign in with a NexTool account, then add one URL as a connector in Claude or ChatGPT. Request access at **https://nextoolsolutions.com/mcp**. How it works, step by step: **https://nextoolsolutions.com/en/mcp/como-funciona**.
 - **Local, open source (this repository):** runs on your machine with your GLPI credentials. It is free and also works with GLPI instances that are only reachable on your intranet.
 
 ---
