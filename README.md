@@ -1,5 +1,7 @@
 # NexTool MCP for GLPI
 
+[![npm](https://img.shields.io/npm/v/@nextoolsolutions/mcp-glpi)](https://www.npmjs.com/package/@nextoolsolutions/mcp-glpi) [![smithery badge](https://smithery.ai/badge/nextoolsolutions/glpi)](https://smithery.ai/servers/nextoolsolutions/glpi) [![NexTools-Solutions/nextool-mcp-glpi MCP server](https://glama.ai/mcp/servers/NexTools-Solutions/nextool-mcp-glpi/badges/score.svg)](https://glama.ai/mcp/servers/NexTools-Solutions/nextool-mcp-glpi)
+
 Open-source [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI assistants
 (Claude, ChatGPT, Cursor, VS Code, Windsurf…) to your **GLPI** service desk: tickets, ITIL objects
 (problems, changes), assets, knowledge base, users, rules and webhooks. It works with GLPI 10 and 11, and
