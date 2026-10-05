@@ -1,7 +1,7 @@
 # Tag v<version> -> tests -> npm (with provenance) -> official MCP Registry.
-#   npm: trusted publishing (OIDC, no token) once each package lists this repo + release.yml as a trusted publisher
-#     on npmjs.com; until then the repository secret NPM_TOKEN is used. npm CLI >= 11.5.1 tries OIDC first and falls
-#     back to the token, so the secret can be deleted after the first OIDC publish succeeds.
+#   npm: trusted publishing (OIDC, no token): both packages list this repo + release.yml as a trusted publisher on
+#     npmjs.com (with "npm publish" allowed). npm >= 11.5.1 is required, and no NODE_AUTH_TOKEN may be set (a token
+#     takes precedence over OIDC). The old repository secret NPM_TOKEN is no longer read and can be deleted.
 #   MCP Registry: DNS authentication for com.nextoolsolutions/* with repository secret MCP_PRIVATE_KEY
 #     (Ed25519 private key seed in hex; public key in a TXT record on the apex of nextoolsolutions.com)
 name: release
@@ -30,9 +30,7 @@ jobs:
         run: npm ci && npm run build && npm test
       - name: tag matches server version
         run: test "v$(node -p "require('./mcp-glpi/package.json').version")" = "$GITHUB_REF_NAME"
-      - name: publish to npm (skips versions already published)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: publish to npm via trusted publishing (skips versions already published)
         run: |
           for d in mcp-glpi-core mcp-glpi; do
             name=$(node -p "require('./$d/package.json').name"); ver=$(node -p "require('./$d/package.json').version")
