@@ -29,14 +29,15 @@ supports both the REST API v1 and the GLPI 11 API v2 in one server.
 
 ## 2. Local install (open source)
 
-> **npm release coming soon.** Until `@nextoolsolutions/mcp-glpi` is published, build from source (below). Once it is published, every `node …/dist/index.js` below becomes `npx -y @nextoolsolutions/mcp-glpi`.
+Published on npm as [`@nextoolsolutions/mcp-glpi`](https://www.npmjs.com/package/@nextoolsolutions/mcp-glpi) and listed in the
+[official MCP Registry](https://registry.modelcontextprotocol.io) as **`com.nextoolsolutions/glpi`**. Requires Node.js 18+.
 
 ```bash
-git clone https://github.com/NexTools-Solutions/nextool-mcp-glpi.git
-cd nextool-mcp-glpi/mcp-glpi-core && npm ci && npm run build
-cd ../mcp-glpi && npm ci && npm run build
-# the server entry point is now: <path>/nextool-mcp-glpi/mcp-glpi/dist/index.js   (Node.js 18+)
+GLPI_URL=https://glpi.example.com GLPI_USER_TOKEN=xxx GLPI_APP_TOKEN=yyy npx -y @nextoolsolutions/mcp-glpi
 ```
+
+From source instead: clone this repository, then `npm ci && npm run build` in `mcp-glpi-core` and in `mcp-glpi`, and run
+`node mcp-glpi/dist/index.js`.
 
 ### Environment variables
 
@@ -57,7 +58,7 @@ All options are listed in [mcp-glpi/README.md](mcp-glpi/README.md).
 ```bash
 claude mcp add glpi \
   -e GLPI_URL=https://glpi.example.com -e GLPI_USER_TOKEN=xxx -e GLPI_APP_TOKEN=yyy -e GLPI_TOOLSETS=core \
-  -- node /path/to/nextool-mcp-glpi/mcp-glpi/dist/index.js
+  -- npx -y @nextoolsolutions/mcp-glpi
 ```
 
 ### Claude Desktop
@@ -68,8 +69,8 @@ Edit `claude_desktop_config.json` (*Settings → Developer → Edit config*) and
 {
   "mcpServers": {
     "glpi": {
-      "command": "node",
-      "args": ["/path/to/nextool-mcp-glpi/mcp-glpi/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@nextoolsolutions/mcp-glpi"],
       "env": {
         "GLPI_URL": "https://glpi.example.com",
         "GLPI_USER_TOKEN": "xxx",
