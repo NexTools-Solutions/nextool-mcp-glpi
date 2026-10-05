@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.4] - 2026-10-05
+
+### Fixed
+- Every tool is annotated `openWorldHint: true` (core 1.3.2): the GLPI instance is an external system, as the
+  OpenAI plugin scan pointed out. No change in behaviour.
+
 ## [3.5.3] - 2026-10-05
 
 ### Fixed

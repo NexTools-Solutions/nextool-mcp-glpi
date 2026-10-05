@@ -96,8 +96,8 @@ export interface ToolAnnotationHints {
  *                   idempotency.ts);
  *   - destructive → destructiveHint, idempotent (deleting twice leaves the
  *                   same state; the second call just fails).
- * openWorldHint is false: every tool talks to the one GLPI instance configured,
- * not to an open set of external systems.
+ * openWorldHint is true: every tool reaches the GLPI instance the user connected, an external system
+ * controlled by that organization, not by this server (MCP spec; directory scans flag false here).
  */
 export function annotationsFor(kind: OperationKind, toolName?: string): ToolAnnotationHints {
   const verb = toolName ? verbOf(toolName) : "";
@@ -109,7 +109,7 @@ export function annotationsFor(kind: OperationKind, toolName?: string): ToolAnno
       kind === "read" ||
       kind === "destructive" ||
       IDEMPOTENT_WRITE_PREFIXES.some((p) => verb.startsWith(p)),
-    openWorldHint: false,
+    openWorldHint: true,
   };
 }
 

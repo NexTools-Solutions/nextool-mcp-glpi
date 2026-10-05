@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-05
+
+### Fixed
+- **`openWorldHint` is now `true` on every tool.** The tools reach the GLPI instance the user connected, an external
+  system controlled by that organization; the MCP spec calls that open-world, and the OpenAI plugin scan flagged
+  `false` on every tool. Other annotations are unchanged.
+
 ## [1.3.1] - 2026-10-04
 
 ### Fixed

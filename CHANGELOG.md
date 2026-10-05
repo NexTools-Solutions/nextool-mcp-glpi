@@ -5,6 +5,9 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.4] - 2026-10-05
+- `openWorldHint: true` on every tool (core 1.3.2): GLPI is an external system (flagged by the OpenAI plugin scan).
+
 ## [3.5.3] - 2026-10-05
 - Every tool parameter now has a description (four were missing), enforced by a contract test.
 

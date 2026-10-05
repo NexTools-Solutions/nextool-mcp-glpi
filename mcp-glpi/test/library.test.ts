@@ -140,7 +140,7 @@ describe("instanceFromConfig", () => {
   });
 
   it("exposes the release version", () => {
-    assert.equal(SERVER_VERSION, "3.5.3");
+    assert.equal(SERVER_VERSION, "3.5.4");
   });
 });
 
@@ -427,7 +427,7 @@ describe("MCP annotations on every tool", () => {
       const additive = /^glpi_(v2_)?(create|add)_/.test(t.name);
       assert.equal(a.destructiveHint, kind === "destructive" || (kind === "write" && !additive), `${t.name} destructiveHint`);
       assert.equal(typeof a.idempotentHint, "boolean", `${t.name} idempotentHint`);
-      assert.equal(a.openWorldHint, false, `${t.name} openWorldHint`);
+      assert.equal(a.openWorldHint, true, `${t.name} openWorldHint`);
       assert.ok(typeof a.title === "string" && a.title.length > 0, `${t.name} title`);
     }
     const byName = new Map(tools.map((t) => [t.name, t.annotations!]));

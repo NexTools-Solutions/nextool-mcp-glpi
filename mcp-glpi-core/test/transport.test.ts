@@ -104,12 +104,12 @@ describe("default transport against a real server", () => {
 });
 
 describe("MCP annotations", () => {
-  it("read tools are read-only, idempotent and closed-world", () => {
+  it("read tools are read-only, idempotent and open-world (the user's GLPI)", () => {
     assert.deepEqual(annotationsFor(classifyTool("glpi_get_ticket"), "glpi_get_ticket"), {
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
     });
   });
 
@@ -118,7 +118,7 @@ describe("MCP annotations", () => {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     });
     assert.equal(annotationsFor("write", "glpi_add_followup").idempotentHint, false);
   });
@@ -139,7 +139,7 @@ describe("MCP annotations", () => {
       const a = annotationsFor(classifyTool(name), name);
       assert.equal(a.destructiveHint, true, name);
       assert.equal(a.readOnlyHint, false, name);
-      assert.equal(a.openWorldHint, false, name);
+      assert.equal(a.openWorldHint, true, name);
     }
   });
 
@@ -165,7 +165,7 @@ describe("MCP annotations", () => {
     const get = seen.get("glpi_get_ticket")!.annotations as Record<string, unknown>;
     assert.equal(get.title, "Get ticket");
     assert.equal(get.readOnlyHint, true);
-    assert.equal(get.openWorldHint, false);
+    assert.equal(get.openWorldHint, true);
     const del = seen.get("glpi_delete_document")!.annotations as Record<string, unknown>;
     assert.equal(del.title, "Delete document");
     assert.equal(del.destructiveHint, true);

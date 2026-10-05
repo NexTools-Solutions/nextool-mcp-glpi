@@ -7,7 +7,7 @@
  * registered afterwards — present or future — gets:
  *
  *   1. MCP annotations derived from its name (title, readOnlyHint,
- *      destructiveHint, idempotentHint, openWorldHint: false);
+ *      destructiveHint, idempotentHint, openWorldHint: true);
  *   2. a mandatory `reason` field on destructive tools;
  *   3. a policy check that runs before the handler touches GLPI.
  *
