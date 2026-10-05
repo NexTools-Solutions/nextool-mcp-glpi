@@ -5,6 +5,9 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.3] - 2026-10-05
+- Every tool parameter now has a description (four were missing), enforced by a contract test.
+
 ## [3.5.2] - 2026-10-04
 - MCP Registry name `com.nextoolsolutions/glpi` (domain-verified) with the hosted server as a remote
   (`https://mcp.nextoolsolutions.com/mcp`); the release workflow signs in to the registry by DNS

@@ -1804,7 +1804,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         begin: z.string().describe("Start, 'YYYY-MM-DD HH:MM:SS'"),
         end: z.string().describe("End, 'YYYY-MM-DD HH:MM:SS'"),
         users_id: idSchema.optional().describe("User the booking is for"),
-        comment: z.string().optional(),
+        comment: z.string().optional().describe("Free-text note stored on the reservation (optional)"),
       }),
       outputSchema: outData(),
     },
@@ -1965,7 +1965,10 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update webhook",
       description: "Update a webhook definition by ID.",
-      inputSchema: z.object({ webhookId: idSchema, input: z.record(z.unknown()) }),
+      inputSchema: z.object({
+        webhookId: idSchema,
+        input: z.record(z.unknown()).describe('Webhook fields to change (e.g. { "url": "https://example.com/hook", "is_active": 1 })'),
+      }),
       outputSchema: outData(),
     },
     wrap(async ({ webhookId, input }) =>
@@ -1978,7 +1981,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Enable or disable webhook",
       description: "Turn a webhook on or off without touching the rest of its definition.",
-      inputSchema: z.object({ webhookId: idSchema, active: z.boolean() }),
+      inputSchema: z.object({ webhookId: idSchema, active: z.boolean().describe("true turns the webhook on, false turns it off") }),
       outputSchema: outData(),
     },
     wrap(async ({ webhookId, active }) =>
@@ -1991,7 +1994,10 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete webhook",
       description: "Delete a webhook. Set purge to remove it permanently instead of trashing it.",
-      inputSchema: z.object({ webhookId: idSchema, purge: z.boolean().optional() }),
+      inputSchema: z.object({
+        webhookId: idSchema,
+        purge: z.boolean().optional().describe("true deletes permanently; false or omitted moves it to the GLPI trash"),
+      }),
       outputSchema: outData(),
     },
     wrap(async ({ webhookId, purge }) =>

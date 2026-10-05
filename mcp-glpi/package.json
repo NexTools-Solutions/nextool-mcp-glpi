@@ -1,6 +1,6 @@
 {
   "name": "@nextoolsolutions/mcp-glpi",
-  "version": "3.5.2",
+  "version": "3.5.3",
   "description": "MCP server for GLPI (service desk / ITSM): 166 GLPI tools for tickets, ITIL problems and changes, assets and inventory, knowledge base, users, rules and webhooks. GLPI 10 and 11, REST API v1 + GLPI 11 API v2 (OAuth2). Not affiliated with Teclib'.",
   "type": "module",
   "main": "dist/lib.js",

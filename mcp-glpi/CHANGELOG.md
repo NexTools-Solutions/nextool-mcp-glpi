@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.3] - 2026-10-05
+
+### Fixed
+- **Four parameters had no description** (flagged by the Smithery quality scan): `comment` of
+  `glpi_create_reservation`, `input` of `glpi_update_webhook`, `active` of `glpi_set_webhook_active` and
+  `purge` of `glpi_delete_webhook`. A contract test now requires a description on every parameter of every tool.
+
 ## [3.5.2] - 2026-10-04
 
 Distribution metadata only; no change in tools or behaviour.

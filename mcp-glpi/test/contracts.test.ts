@@ -4,7 +4,9 @@
  *   1. A tool named in another tool's description or parameters exists and is
  *      in every preset that holds the tool naming it (a preset never sends the
  *      model after a tool it lacks). Prompts naming a missing tool are skipped.
- *   2. Every tool that advertises `format` honours `format: "markdown"` — in the
+ *   2. Every parameter of every tool has a description (directories score it and
+ *      models choose arguments from it).
+ *   3. Every tool that advertises `format` honours `format: "markdown"` — in the
  *      text block AND in structuredContent, which is what clients that support
  *      structured results hand to the model.
  *
@@ -100,6 +102,22 @@ function sampleValue(s: Record<string, unknown>): unknown {
       return typeof s.minLength === "number" ? "x".repeat(s.minLength) : "1";
   }
 }
+
+describe("parameters are described", () => {
+  it("every parameter of every tool has a description", async () => {
+    const client = await connect(BOTH);
+    const { tools } = await client.listTools();
+    await client.close();
+    const missing: string[] = [];
+    for (const t of tools) {
+      const props = (t.inputSchema.properties ?? {}) as Record<string, { description?: string }>;
+      for (const [name, schema] of Object.entries(props)) {
+        if (!schema.description?.trim()) missing.push(`${t.name}.${name}`);
+      }
+    }
+    assert.deepEqual(missing, []);
+  });
+});
 
 describe("citations between tools", () => {
   it("every cited tool exists and sits in every preset of the citing tool", async () => {
