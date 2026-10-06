@@ -42,6 +42,17 @@ jobs:
         env:
           MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
         run: |
+          # The registry validates the npm version: wait until npm serves it (a fresh publish takes a moment).
+          name=$(node -p "require('./package.json').name"); ver=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do
+            npm view "$name@$ver" version >/dev/null 2>&1 && break
+            echo "waiting for $name@$ver on npm ($i/30)"; sleep 10
+          done
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login dns --domain nextoolsolutions.com --private-key "$MCP_PRIVATE_KEY"
-          ./mcp-publisher publish
+          # npm view may hit a different CDN node than the registry: retry the publish a few times.
+          for i in 1 2 3 4 5; do
+            ./mcp-publisher publish && exit 0
+            echo "publish failed, retrying in 30s ($i/5)"; sleep 30
+          done
+          exit 1
