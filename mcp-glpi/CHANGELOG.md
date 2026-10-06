@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.5] - 2026-10-05
+
+### Changed
+- `glpi_get_asset_details` description now says first what the tool does (one asset with its hardware details)
+  and points to `glpi_get_asset` for the plain record; the OpenAI plugin scan flagged the old one as unclear.
+
 ## [3.5.4] - 2026-10-05
 
 ### Fixed

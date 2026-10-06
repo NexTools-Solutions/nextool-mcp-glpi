@@ -5,6 +5,10 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.5] - 2026-10-05
+- Clearer description for `glpi_get_asset_details` (flagged by the OpenAI plugin scan). First release published to npm
+  through trusted publishing (OIDC), without a token.
+
 ## [3.5.4] - 2026-10-05
 - `openWorldHint: true` on every tool (core 1.3.2): GLPI is an external system (flagged by the OpenAI plugin scan).
 
