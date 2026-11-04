@@ -146,7 +146,7 @@ Live catalogues are cached in-process (`GLPI_RESOURCE_CACHE_TTL`, default 300000
 | `glpi_search_user_by_email` | read | Find users by exact email address (returns the user items: id, login, real name, first name...). |
 | `glpi_list_search_options` | read | List available search fields for an itemtype. Critical for building search criteria with glpi_search. Returns field IDs, names, and types. |
 | `glpi_count_items` | read | Count matching items without transferring them — answers 'how many' in one cheap call. Use glpi_list_search_options to discover criteria field IDs. |
-| `glpi_get_ticket_stats` | read | Ticket counts per status (New, Processing, Pending, Solved, Closed) plus the total, without listing the tickets. Optional criteria narrow the scope, e.g. one entity: [{field: 80, searchtype: 'equals', value: <entity id>}] (Ticket search option IDs: 80 = entity, 4 = requester, 5 = technician, 7 = category; same criteria shape as glpi_search). |
+| `glpi_get_ticket_stats` | read | Counts per built-in status, `other_status_count` for codes outside 1–6, and total. Check `counts_consistent`; if false, retry or explain the mismatch. For open tickets, filter status (field 12) equals `notold`; unfiltered counts include solved and closed. Optional criteria use the same shape as `glpi_search`. |
 
 ### Assets and reservations (10)
 

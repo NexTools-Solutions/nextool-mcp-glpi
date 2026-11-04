@@ -1863,8 +1863,11 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get ticket stats",
       description:
-        "Ticket counts per status (New, Processing, Pending, Solved, Closed) plus the total, " +
-        "without listing the tickets. Optional criteria narrow the scope, e.g. one entity: " +
+        "Ticket counts per built-in status (New, Processing assigned/planned, Pending, Solved, Closed), " +
+        "other_status_count for codes outside 1–6, and the total, without listing the tickets. " +
+        "Report other statuses separately and check counts_consistent before reporting an exact breakdown. " +
+        "For open tickets only, filter status (field 12) equals 'notold'; unfiltered counts include solved and closed tickets. " +
+        "Optional criteria narrow the scope, e.g. one entity: " +
         "[{field: 80, searchtype: 'equals', value: <entity id>}] (Ticket search option IDs: 80 = entity, " +
         "4 = requester, 5 = technician, 7 = category; same criteria shape as glpi_search).",
       inputSchema: z.object({

@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.6] - 2026-11-04
+
+### Fixed
+- Ticket statistics explicitly count nonstandard status codes, flag inconsistent counts from separate reads, and preserve OR filters when adding status constraints.
+
 ## [3.5.5] - 2026-10-05
 
 ### Changed

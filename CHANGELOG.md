@@ -5,6 +5,12 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.5.6] - 2026-11-04
+
+### Fixed
+- Ticket statistics include nonstandard status counts, preserve OR scopes and flag inconsistent aggregate reads.
+
+
 ## [3.5.5] - 2026-10-05
 - Clearer description for `glpi_get_asset_details` (flagged by the OpenAI plugin scan). First release published to npm
   through trusted publishing (OIDC), without a token.

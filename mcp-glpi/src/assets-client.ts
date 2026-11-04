@@ -323,6 +323,11 @@ const TICKET_STATUS_FIELD = 12;
 export interface TicketStats {
   total: number;
   by_status: { status: string; code: number; count: number }[];
+  /** Tickets with status codes outside the six built-in GLPI statuses. */
+  other_status_count: number;
+  /** Counts are separate API reads, so concurrent changes can make them differ. */
+  counts_consistent: boolean;
+  note?: string;
 }
 
 /**
@@ -337,11 +342,13 @@ export async function ticketStats(
   const total = await countItems(config, "Ticket", extraCriteria.length ? extraCriteria : undefined);
 
   const by_status: TicketStats["by_status"] = [];
+  // Preserve an OR expression supplied by the caller when adding a status constraint.
+  const scope: Record<string, unknown>[] = extraCriteria.length ? [{ criteria: extraCriteria }] : [];
   for (const [code, label] of Object.entries(TICKET_STATUS)) {
     const criteria: Record<string, unknown>[] = [
-      ...extraCriteria,
+      ...scope,
       {
-        link: extraCriteria.length ? "AND" : undefined,
+        link: scope.length ? "AND" : undefined,
         field: TICKET_STATUS_FIELD,
         searchtype: "equals",
         value: code,
@@ -351,5 +358,19 @@ export async function ticketStats(
     by_status.push({ status: label, code: Number(code), count: r.total });
   }
 
-  return { total: total.total, by_status };
+  const other = await countItems(config, "Ticket", [
+    ...(scope.length ? scope : [{ field: TICKET_STATUS_FIELD, searchtype: "equals", value: "all" }]),
+    // GLPI's status search ignores `notequals`; negate the equals criterion via its link instead.
+    ...Object.keys(TICKET_STATUS).map((code) => ({
+      link: "AND NOT",
+      field: TICKET_STATUS_FIELD,
+      searchtype: "equals",
+      value: code,
+    })),
+  ]);
+  const counts_consistent = total.total === other.total + by_status.reduce((sum, row) => sum + row.count, 0);
+  const notes: string[] = [];
+  if (other.total > 0) notes.push("other_status_count includes status codes outside GLPI's built-in statuses 1–6; do not assign them a built-in status label.");
+  if (!counts_consistent) notes.push("Counts were read separately and do not reconcile; tickets may have changed during collection. Retry before reporting an exact breakdown.");
+  return { total: total.total, by_status, other_status_count: other.total, counts_consistent, ...(notes.length ? { note: notes.join(" ") } : {}) };
 }
