@@ -1683,18 +1683,19 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get asset details",
       description:
-        "Get one GLPI asset (computer, monitor, printer, network equipment, phone, peripheral...) by type " +
-        "and ID together with its hardware details in a single call: operating system, processors, memory " +
-        "and disks by default, with names instead of IDs. Installed software and network ports are large on " +
-        "inventoried hosts, so they are returned only when asked for with sections ['softwares'] or " +
-        "['networkports']. For the plain asset record use glpi_get_asset.",
+        "Use this read-only tool to inspect one known GLPI hardware asset by type and ID. It returns the base " +
+        "asset record plus the devices and disks sections by default; when GLPI has inventoried them, these " +
+        "sections include the operating system, processors, memory and storage. Request the softwares or " +
+        "networkports section only when the user asks for installed software or network interfaces because " +
+        "those lists can be large. Use glpi_get_asset when only the base asset record is needed. This tool " +
+        "does not modify the asset.",
       inputSchema: z.object({
         asset_type: assetTypeSchema,
         assetId: idSchema,
         sections: z
           .array(z.enum(DETAIL_SECTIONS))
           .optional()
-          .describe("Sections to expand (default: devices, disks, softwares, networkports)"),
+          .describe("Related sections to include (default: devices and disks; request softwares or networkports explicitly)"),
         max_items_per_section: z
           .number()
           .int()

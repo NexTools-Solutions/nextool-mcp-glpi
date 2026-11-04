@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.5.7] - 2026-11-04
+
+### Fixed
+- `glpi_get_asset_details` now states when to use the tool, its required asset lookup, default and optional
+  sections, large-result limitation, read-only behavior, and the simpler alternative. Its `sections` parameter
+  now correctly documents that only `devices` and `disks` are included by default.
+- The MCP server identity version now follows the package version.
+
 ## [3.5.6] - 2026-11-04
 
 ### Fixed
