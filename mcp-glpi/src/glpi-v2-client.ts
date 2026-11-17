@@ -515,7 +515,9 @@ export function getUser(cfg: GlpiV2Config, userId: number | string) {
 /**
  * The connected user. GET /Administration/User/Me needs the OAuth "user" scope;
  * with the default "api" scope GLPI 11.0.7 answers 403 ERROR_RIGHT_MISSING, so
- * the user is then read through the session (user_id) instead.
+ * the user is then read through the session (user_id) instead. A profile without
+ * the right to read users gets 403 on its own record too: the identity is then the
+ * one the session gives (id, login, names), always that of the token's owner.
  */
 export async function getMe(cfg: GlpiV2Config): Promise<Record<string, unknown>> {
   try {
@@ -525,7 +527,21 @@ export async function getMe(cfg: GlpiV2Config): Promise<Record<string, unknown>>
     const session = await getSession(cfg);
     const userId = Number(session?.user_id);
     if (!Number.isInteger(userId) || userId <= 0) throw e;
-    const user = await glpiV2Request<unknown>(cfg, "GET", `/Administration/User/${userId}`);
+    let user: unknown;
+    try {
+      user = await glpiV2Request<unknown>(cfg, "GET", `/Administration/User/${userId}`);
+    } catch (e2) {
+      if (!(e2 instanceof GlpiV2ApiError) || e2.status !== 403) throw e2;
+      const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      return {
+        id: userId,
+        username: text(session.name),
+        firstname: text(session.first_name),
+        realname: text(session.real_name),
+        friendly_name: text(session.friendly_name),
+        source: "session",
+      };
+    }
     const item = Array.isArray(user) ? user[0] : user;
     return { ...(typeof item === "object" && item !== null ? (item as Record<string, unknown>) : { id: userId }), source: "session" };
   }

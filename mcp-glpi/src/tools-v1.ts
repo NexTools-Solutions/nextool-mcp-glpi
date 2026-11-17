@@ -187,7 +187,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
   // Shorthand schemas
   // ---------------------------------------------------------------------------
 
-  const idSchema = itemIdSchema();
+  // A new schema for each use, as statusEnum below: a shared one becomes a $ref.
+  const idSchema = () => itemIdSchema();
   /** Entity IDs: 0 is the root entity. */
   const entityIdSchema = itemIdSchema("Entity ID", { allowZero: true });
   const rangeSchema = z.string().optional().describe("Pagination range, e.g. 0-49");
@@ -200,9 +201,11 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     });
 
   /** Ticket status names accepted by the list tools ("open" = not solved nor closed). */
-  const statusEnum = z.enum(TICKET_STATUS_FILTERS);
+  // A new enum for each use: one instance used twice becomes a JSON Schema $ref
+  // (#/properties/status/anyOf/0) that some clients cannot resolve.
+  const statusEnum = () => z.enum(TICKET_STATUS_FILTERS);
   const statusSchema = z
-    .union([statusEnum, z.array(statusEnum)])
+    .union([statusEnum(), z.array(statusEnum())])
     .optional();
   const ticketSortSchema = z
     .enum(TICKET_SORT_FIELDS)
@@ -272,7 +275,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         sort: ticketSortSchema,
         order: orderSchema,
         range: rangeSchema,
-        users_id: idSchema.optional().describe("Another user's ID (default: the connected user)"),
+        users_id: idSchema().optional().describe("Another user's ID (default: the connected user)"),
       }),
       outputSchema: z.object({
         data: z.unknown(),
@@ -297,7 +300,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "entity_name; status_name, type_name, priority_name in the GLPI user's language). Requesters, technicians and observers are not ticket " +
         "fields: list them with glpi_list_ticket_users (and groups with glpi_list_ticket_groups).",
       inputSchema: z.object({
-        ticketId: idSchema,
+        ticketId: idSchema(),
         expand_dropdowns: expandSchema.describe(
           "Replace dropdown IDs with their names in place (loses the IDs; by default names are added beside them)",
         ),
@@ -333,7 +336,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Update ticket",
       description: "Update an existing ticket by ID.",
       inputSchema: z.object({
-        ticketId: idSchema,
+        ticketId: idSchema(),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: outData(),
@@ -372,7 +375,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get change",
       description: "Retrieve a change by ID, with names beside the IDs and status/priority labels in the GLPI user's language.",
-      inputSchema: z.object({ changeId: idSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ changeId: idSchema(), expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ changeId, expand_dropdowns }) => {
@@ -400,7 +403,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update change",
       description: "Update an existing change by ID.",
-      inputSchema: z.object({ changeId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ changeId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ changeId, input }) => jsonResult({ data: (await updateChange(config, changeId, input as Record<string, unknown>)) ?? {} })),
@@ -411,7 +414,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List change followups",
       description: "List followups (comments) of a change, with the author's name (user_name).",
-      inputSchema: z.object({ changeId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ changeId: idSchema(), range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ changeId, range, expand_dropdowns }) =>
@@ -450,7 +453,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get problem",
       description: "Retrieve a problem by ID, with names beside the IDs and status/priority labels in the GLPI user's language.",
-      inputSchema: z.object({ problemId: idSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ problemId: idSchema(), expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ problemId, expand_dropdowns }) => {
@@ -478,7 +481,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update problem",
       description: "Update an existing problem by ID.",
-      inputSchema: z.object({ problemId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ problemId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ problemId, input }) => jsonResult({ data: (await updateProblem(config, problemId, input as Record<string, unknown>)) ?? {} })),
@@ -489,7 +492,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List problem followups",
       description: "List followups (comments) of a problem, with the author's name (user_name).",
-      inputSchema: z.object({ problemId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ problemId: idSchema(), range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ problemId, range, expand_dropdowns }) =>
@@ -561,7 +564,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add followup to ticket",
       description: "Add a comment/followup to a ticket.",
       inputSchema: z.object({
-        ticketId: idSchema,
+        ticketId: idSchema(),
         content: z.string().describe("Followup text content"),
         is_private: z.number().optional().describe("1 for private, 0 for public (default: 0)"),
         users_id: z.number().int().positive().optional().describe("Author user ID (default: session user)"),
@@ -578,7 +581,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket followups",
       description: "List followups (comments) of a ticket, oldest first, with the author's name (user_name).",
-      inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
+      inputSchema: z.object({ ticketId: idSchema(), range: rangeSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId, range }) =>
@@ -596,7 +599,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add solution to ticket",
       description: "Add a solution to a ticket (status changes to Solved).",
       inputSchema: z.object({
-        ticketId: idSchema,
+        ticketId: idSchema(),
         content: z.string().describe("Solution text content"),
       }),
       outputSchema: outData(),
@@ -618,7 +621,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "List approval/validation requests for a ticket, with requester and approver names " +
         "(user_name, validator_name) and status_name in the GLPI user's language (status: 1 = not subject to " +
         "approval, 2 = waiting, 3 = granted, 4 = refused).",
-      inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
+      inputSchema: z.object({ ticketId: idSchema(), range: rangeSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId, range }) =>
@@ -632,8 +635,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Create ticket validation",
       description: "Create an approval request assigning a validator (users_id_validate).",
       inputSchema: z.object({
-        ticketId: idSchema,
-        users_id_validate: idSchema.describe("Approver user ID"),
+        ticketId: idSchema(),
+        users_id_validate: idSchema().describe("Approver user ID"),
         comment_submission: z.string().optional().describe("Comment for the approval request"),
       }),
       outputSchema: outData(),
@@ -649,7 +652,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Update ticket validation",
       description: "Approve/refuse a validation (status: accepted/refused) or change the approver.",
       inputSchema: z.object({
-        validationId: idSchema,
+        validationId: idSchema(),
         input: z.record(z.unknown()).describe("e.g. {status: 'accepted'} or {users_id_validate: 2}"),
       }),
       outputSchema: outData(),
@@ -664,7 +667,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete ticket validation",
       description: "Remove a validation request by ID.",
-      inputSchema: z.object({ validationId: idSchema }),
+      inputSchema: z.object({ validationId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ validationId }) => jsonResult({ data: await deleteTicketValidation(config, validationId) })),
@@ -679,7 +682,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get user",
       description: "Retrieve a user by ID.",
-      inputSchema: z.object({ userId: idSchema }),
+      inputSchema: z.object({ userId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ userId }) => jsonResult({ data: (await getUser(config, userId)) ?? {} })),
@@ -726,7 +729,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update user",
       description: "Update an existing user by ID.",
-      inputSchema: z.object({ userId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ userId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ userId, input }) => jsonResult({ data: (await updateUser(config, userId, input as Record<string, unknown>)) ?? {} })),
@@ -752,7 +755,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get document",
       description: "Retrieve a document by ID.",
-      inputSchema: z.object({ documentId: idSchema }),
+      inputSchema: z.object({ documentId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ documentId }) => jsonResult({ data: (await getDocument(config, documentId)) ?? {} })),
@@ -774,7 +777,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete document",
       description: "Permanently delete a document by ID.",
-      inputSchema: z.object({ documentId: idSchema }),
+      inputSchema: z.object({ documentId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ documentId }) => jsonResult({ data: await deleteDocument(config, documentId) })),
@@ -800,7 +803,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get document-item link",
       description: "Retrieve a Document_Item link by ID.",
-      inputSchema: z.object({ documentItemId: idSchema }),
+      inputSchema: z.object({ documentItemId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ documentItemId }) => jsonResult({ data: (await getDocumentItem(config, documentItemId)) ?? {} })),
@@ -812,9 +815,9 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Link document to item",
       description: "Create a link between a document and an item (Ticket, KnowbaseItem, etc.).",
       inputSchema: z.object({
-        documents_id: idSchema.describe("Document ID"),
+        documents_id: idSchema().describe("Document ID"),
         itemtype: z.string().describe("Target item type, e.g. Ticket, KnowbaseItem"),
-        items_id: idSchema.describe("Target item ID"),
+        items_id: idSchema().describe("Target item ID"),
       }),
       outputSchema: outData(),
     },
@@ -828,7 +831,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete document-item link",
       description: "Remove a Document_Item link by ID.",
-      inputSchema: z.object({ documentItemId: idSchema }),
+      inputSchema: z.object({ documentItemId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ documentItemId }) => jsonResult({ data: await deleteDocumentItem(config, documentItemId) })),
@@ -854,7 +857,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get knowledge base item",
       description: "Retrieve a knowledge base article by ID.",
-      inputSchema: z.object({ knowbaseId: idSchema }),
+      inputSchema: z.object({ knowbaseId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ knowbaseId }) => jsonResult({ data: (await getKnowbaseItem(config, knowbaseId)) ?? {} })),
@@ -876,7 +879,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update knowledge base item",
       description: "Update a knowledge base article by ID.",
-      inputSchema: z.object({ knowbaseId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ knowbaseId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ knowbaseId, input }) => jsonResult({ data: await updateKnowbaseItem(config, knowbaseId, input as Record<string, unknown>) })),
@@ -887,7 +890,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete knowledge base item",
       description: "Permanently delete a knowledge base article.",
-      inputSchema: z.object({ knowbaseId: idSchema }),
+      inputSchema: z.object({ knowbaseId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ knowbaseId }) => jsonResult({ data: await deleteKnowbaseItem(config, knowbaseId) })),
@@ -913,7 +916,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get knowledge base category",
       description: "Retrieve a knowledge base category by ID.",
-      inputSchema: z.object({ categoryId: idSchema }),
+      inputSchema: z.object({ categoryId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ categoryId }) => jsonResult({ data: (await getKnowbaseCategory(config, categoryId)) ?? {} })),
@@ -935,7 +938,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update knowledge base category",
       description: "Update a knowledge base category by ID.",
-      inputSchema: z.object({ categoryId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ categoryId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ categoryId, input }) => jsonResult({ data: await updateKnowbaseCategory(config, categoryId, input as Record<string, unknown>) })),
@@ -946,7 +949,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Delete knowledge base category",
       description: "Permanently delete a knowledge base category.",
-      inputSchema: z.object({ categoryId: idSchema }),
+      inputSchema: z.object({ categoryId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ categoryId }) => jsonResult({ data: await deleteKnowbaseCategory(config, categoryId) })),
@@ -1023,7 +1026,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get ticket rule",
       description: "Retrieve a ticket business rule (RuleTicket) by ID.",
-      inputSchema: z.object({ ruleId: idSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ ruleId: idSchema(), expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ruleId, expand_dropdowns }) => jsonResult({ data: (await getRuleTicket(config, ruleId, { expand_dropdowns })) ?? {} })),
@@ -1034,7 +1037,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket rule criteria",
       description: "List criteria (conditions) of a specific ticket rule (sub-items of RuleTicket).",
-      inputSchema: z.object({ ruleId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ ruleId: idSchema(), range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ruleId, range, expand_dropdowns }) =>
@@ -1047,7 +1050,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket rule actions",
       description: "List actions of a specific ticket rule (sub-items of RuleTicket).",
-      inputSchema: z.object({ ruleId: idSchema, range: rangeSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ ruleId: idSchema(), range: rangeSchema, expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ruleId, range, expand_dropdowns }) =>
@@ -1063,7 +1066,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "List rule criteria via GET /RuleCriteria. Optionally filter by rules_id " +
         "(works for any rule type: RuleTicket, RuleChange, RuleMailCollector).",
       inputSchema: z.object({
-        rules_id: idSchema.optional().describe("Rule ID to filter by"),
+        rules_id: idSchema().optional().describe("Rule ID to filter by"),
         range: rangeSchema,
         expand_dropdowns: expandSchema,
       }),
@@ -1083,7 +1086,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "List rule actions via GET /RuleAction. Optionally filter by rules_id " +
         "(works for any rule type: RuleTicket, RuleChange, RuleMailCollector).",
       inputSchema: z.object({
-        rules_id: idSchema.optional().describe("Rule ID to filter by"),
+        rules_id: idSchema().optional().describe("Rule ID to filter by"),
         range: rangeSchema,
         expand_dropdowns: expandSchema,
       }),
@@ -1101,7 +1104,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Update rule action",
       description: "Update a rule action by ID. Fields: action_type, field, value.",
       inputSchema: z.object({
-        actionId: idSchema,
+        actionId: idSchema(),
         input: z.record(z.unknown()).describe("Fields to update (action_type, field, value)"),
       }),
       outputSchema: outData(),
@@ -1179,7 +1182,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get followup template",
       description: "Retrieve a followup template by ID.",
-      inputSchema: z.object({ templateId: idSchema, expand_dropdowns: expandSchema }),
+      inputSchema: z.object({ templateId: idSchema(), expand_dropdowns: expandSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ templateId, expand_dropdowns }) =>
@@ -1203,7 +1206,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Update followup template",
       description: "Update a followup template by ID.",
-      inputSchema: z.object({ templateId: idSchema, input: z.record(z.unknown()).describe("Fields to update") }),
+      inputSchema: z.object({ templateId: idSchema(), input: z.record(z.unknown()).describe("Fields to update") }),
       outputSchema: outData(),
     },
     wrap(async ({ templateId, input }) =>
@@ -1272,7 +1275,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description:
         "List all users linked to a ticket (requesters, observers, assigned), with each person's name " +
         "(user_name) beside users_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer.",
-      inputSchema: z.object({ ticketId: idSchema }),
+      inputSchema: z.object({ ticketId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
@@ -1294,8 +1297,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Add a user to a ticket as requester, observer, or assigned. " +
         "type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({
-        tickets_id: idSchema.describe("Ticket ID"),
-        users_id: idSchema.describe("User ID"),
+        tickets_id: idSchema().describe("Ticket ID"),
+        users_id: idSchema().describe("User ID"),
         type: z.number().min(1).max(3).describe("1=Requester, 2=Assigned, 3=Observer"),
       }),
       outputSchema: outData(),
@@ -1310,7 +1313,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Remove user from ticket",
       description: "Remove a user-ticket link by Ticket_User ID (get the ID from glpi_list_ticket_users).",
-      inputSchema: z.object({ ticketUserId: idSchema.describe("Ticket_User link ID") }),
+      inputSchema: z.object({ ticketUserId: idSchema().describe("Ticket_User link ID") }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketUserId }) => jsonResult({ data: await deleteTicketUser(config, ticketUserId) })),
@@ -1327,7 +1330,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description:
         "List all groups linked to a ticket (requester, observer, assigned), with each group's name " +
         "(group_name) beside groups_id and type_name (in the GLPI user's language). type: 1=Requester, 2=Assigned, 3=Observer.",
-      inputSchema: z.object({ ticketId: idSchema }),
+      inputSchema: z.object({ ticketId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId }) => {
@@ -1349,8 +1352,8 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Add a group to a ticket as requester, observer, or assigned. " +
         "type: 1=Requester, 2=Assigned, 3=Observer.",
       inputSchema: z.object({
-        tickets_id: idSchema.describe("Ticket ID"),
-        groups_id: idSchema.describe("Group ID"),
+        tickets_id: idSchema().describe("Ticket ID"),
+        groups_id: idSchema().describe("Group ID"),
         type: z.number().min(1).max(3).describe("1=Requester, 2=Assigned, 3=Observer"),
       }),
       outputSchema: outData(),
@@ -1365,7 +1368,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Remove group from ticket",
       description: "Remove a group-ticket link by Group_Ticket ID (get the ID from glpi_list_ticket_groups).",
-      inputSchema: z.object({ groupTicketId: idSchema.describe("Group_Ticket link ID") }),
+      inputSchema: z.object({ groupTicketId: idSchema().describe("Group_Ticket link ID") }),
       outputSchema: outData(),
     },
     wrap(async ({ groupTicketId }) => jsonResult({ data: await deleteTicketGroup(config, groupTicketId) })),
@@ -1380,7 +1383,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List ticket tasks",
       description: "List tasks (to-do items) for a ticket, with author, technician and group names (user_name, tech_name, tech_group_name).",
-      inputSchema: z.object({ ticketId: idSchema, range: rangeSchema }),
+      inputSchema: z.object({ ticketId: idSchema(), range: rangeSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ ticketId, range }) =>
@@ -1397,7 +1400,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Optional: is_private (0/1), state (0=Info, 1=To do, 2=Done), " +
         "actiontime (seconds), users_id_tech (assigned technician).",
       inputSchema: z.object({
-        tickets_id: idSchema.describe("Ticket ID"),
+        tickets_id: idSchema().describe("Ticket ID"),
         content: z.string().describe("Task content"),
         is_private: z.number().optional().describe("1=private, 0=public"),
         state: z.number().optional().describe("0=Info, 1=To do, 2=Done"),
@@ -1416,7 +1419,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List change tasks",
       description: "List tasks for a change, with author, technician and group names.",
-      inputSchema: z.object({ changeId: idSchema, range: rangeSchema }),
+      inputSchema: z.object({ changeId: idSchema(), range: rangeSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ changeId, range }) =>
@@ -1429,7 +1432,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "List problem tasks",
       description: "List tasks for a problem, with author, technician and group names.",
-      inputSchema: z.object({ problemId: idSchema, range: rangeSchema }),
+      inputSchema: z.object({ problemId: idSchema(), range: rangeSchema }),
       outputSchema: outData(),
     },
     wrap(async ({ problemId, range }) =>
@@ -1460,7 +1463,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get ITIL category",
       description: "Retrieve an ITIL category by ID.",
-      inputSchema: z.object({ categoryId: idSchema }),
+      inputSchema: z.object({ categoryId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ categoryId }) => jsonResult({ data: (await getITILCategory(config, categoryId)) ?? {} })),
@@ -1489,7 +1492,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get group",
       description: "Retrieve a group by ID.",
-      inputSchema: z.object({ groupId: idSchema }),
+      inputSchema: z.object({ groupId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ groupId }) => jsonResult({ data: (await getGroup(config, groupId)) ?? {} })),
@@ -1505,7 +1508,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add followup to change",
       description: "Add a comment/followup to a change.",
       inputSchema: z.object({
-        changeId: idSchema.describe("Change ID"),
+        changeId: idSchema().describe("Change ID"),
         content: z.string().describe("Followup text content"),
         is_private: z.number().optional().describe("1=private, 0=public"),
       }),
@@ -1522,7 +1525,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add followup to problem",
       description: "Add a comment/followup to a problem.",
       inputSchema: z.object({
-        problemId: idSchema.describe("Problem ID"),
+        problemId: idSchema().describe("Problem ID"),
         content: z.string().describe("Followup text content"),
         is_private: z.number().optional().describe("1=private, 0=public"),
       }),
@@ -1543,7 +1546,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add solution to change",
       description: "Add a solution to a change (status changes to Solved).",
       inputSchema: z.object({
-        changeId: idSchema.describe("Change ID"),
+        changeId: idSchema().describe("Change ID"),
         content: z.string().describe("Solution text content"),
       }),
       outputSchema: outData(),
@@ -1559,7 +1562,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Add solution to problem",
       description: "Add a solution to a problem (status changes to Solved).",
       inputSchema: z.object({
-        problemId: idSchema.describe("Problem ID"),
+        problemId: idSchema().describe("Problem ID"),
         content: z.string().describe("Solution text content"),
       }),
       outputSchema: outData(),
@@ -1618,7 +1621,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get location",
       description: "Retrieve a location by ID.",
-      inputSchema: z.object({ locationId: idSchema }),
+      inputSchema: z.object({ locationId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ locationId }) => jsonResult({ data: (await getLocation(config, locationId)) ?? {} })),
@@ -1668,7 +1671,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description: "Retrieve a single asset by type and ID. For hardware detail use glpi_get_asset_details.",
       inputSchema: z.object({
         asset_type: assetTypeSchema,
-        assetId: idSchema,
+        assetId: idSchema(),
         expand_dropdowns: expandSchema,
       }),
       outputSchema: outData(),
@@ -1691,7 +1694,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "does not modify the asset.",
       inputSchema: z.object({
         asset_type: assetTypeSchema,
-        assetId: idSchema,
+        assetId: idSchema(),
         sections: z
           .array(z.enum(DETAIL_SECTIONS))
           .optional()
@@ -1738,7 +1741,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description: "Update an existing asset by type and ID.",
       inputSchema: z.object({
         asset_type: assetTypeSchema,
-        assetId: idSchema,
+        assetId: idSchema(),
         input: z.record(z.unknown()).describe("Fields to update"),
       }),
       outputSchema: outData(),
@@ -1787,7 +1790,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get reservation",
       description: "Retrieve a reservation by ID.",
-      inputSchema: z.object({ reservationId: idSchema }),
+      inputSchema: z.object({ reservationId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ reservationId }) =>
@@ -1803,10 +1806,10 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Book a reservable item. begin/end use 'YYYY-MM-DD HH:MM:SS'. " +
         "reservationitems_id comes from glpi_list_reservation_items (not the asset ID).",
       inputSchema: z.object({
-        reservationitems_id: idSchema.describe("ReservationItem ID (see glpi_list_reservation_items)"),
+        reservationitems_id: idSchema().describe("ReservationItem ID (see glpi_list_reservation_items)"),
         begin: z.string().describe("Start, 'YYYY-MM-DD HH:MM:SS'"),
         end: z.string().describe("End, 'YYYY-MM-DD HH:MM:SS'"),
-        users_id: idSchema.optional().describe("User the booking is for"),
+        users_id: idSchema().optional().describe("User the booking is for"),
         comment: z.string().optional().describe("Free-text note stored on the reservation (optional)"),
       }),
       outputSchema: outData(),
@@ -1824,7 +1827,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Update reservation",
       description: "Update an existing reservation by ID.",
       inputSchema: z.object({
-        reservationId: idSchema,
+        reservationId: idSchema(),
         input: z.record(z.unknown()).describe("Fields to update (begin, end, comment, users_id)"),
       }),
       outputSchema: outData(),
@@ -1899,7 +1902,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
         "Replaces calling the four list tools separately and interleaving them by hand.",
       inputSchema: z.object({
         itemtype: z.enum(["Ticket", "Change", "Problem"]).describe("ITIL item type"),
-        itemId: idSchema,
+        itemId: idSchema(),
         range: rangeSchema.describe("Pagination range over the merged timeline, e.g. 0-24"),
         order: z.enum(["asc", "desc"]).optional().describe("asc (default) = oldest first, desc = latest first"),
       }),
@@ -1945,7 +1948,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Get webhook",
       description: "Retrieve a webhook definition by ID, including its payload template.",
-      inputSchema: z.object({ webhookId: idSchema }),
+      inputSchema: z.object({ webhookId: idSchema() }),
       outputSchema: outData(),
     },
     wrap(async ({ webhookId }) => jsonResult({ data: (await getWebhook(config, webhookId)) ?? {} })),
@@ -1972,7 +1975,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Update webhook",
       description: "Update a webhook definition by ID.",
       inputSchema: z.object({
-        webhookId: idSchema,
+        webhookId: idSchema(),
         input: z.record(z.unknown()).describe('Webhook fields to change (e.g. { "url": "https://example.com/hook", "is_active": 1 })'),
       }),
       outputSchema: outData(),
@@ -1987,7 +1990,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
     {
       title: "Enable or disable webhook",
       description: "Turn a webhook on or off without touching the rest of its definition.",
-      inputSchema: z.object({ webhookId: idSchema, active: z.boolean().describe("true turns the webhook on, false turns it off") }),
+      inputSchema: z.object({ webhookId: idSchema(), active: z.boolean().describe("true turns the webhook on, false turns it off") }),
       outputSchema: outData(),
     },
     wrap(async ({ webhookId, active }) =>
@@ -2001,7 +2004,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       title: "Delete webhook",
       description: "Delete a webhook. Set purge to remove it permanently instead of trashing it.",
       inputSchema: z.object({
-        webhookId: idSchema,
+        webhookId: idSchema(),
         purge: z.boolean().optional().describe("true deletes permanently; false or omitted moves it to the GLPI trash"),
       }),
       outputSchema: outData(),
@@ -2043,7 +2046,7 @@ export function registerV1Tools(server: McpServer, config: GlpiConfig): void {
       description:
         "Queue a failed delivery for another attempt by resetting its send time and retry " +
         "counter. The GLPI cron does the actual sending — there is no immediate-send endpoint.",
-      inputSchema: z.object({ deliveryId: idSchema.describe("QueuedWebhook ID") }),
+      inputSchema: z.object({ deliveryId: idSchema().describe("QueuedWebhook ID") }),
       outputSchema: outData(),
     },
     wrap(async ({ deliveryId }) =>
