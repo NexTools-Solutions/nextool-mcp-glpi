@@ -12,7 +12,7 @@ both carried.
 | `errors.ts` | `GlpiHttpError` base class, `GlpiRedirectError`, `GlpiPolicyError` |
 | `result.ts` | `toolResult` / `jsonResult` / `errorResult` / `makeWrap` |
 | `policy.ts` | Write policy: read-only mode, delete gating, tool classification by name |
-| `server-policy.ts` | Installs the policy and MCP annotations (title, read-only, destructive, idempotent, closed world) by wrapping `registerTool` |
+| `server-policy.ts` | Installs the policy and MCP annotations (title, read-only, destructive, idempotent, open world) by wrapping `registerTool` |
 | `format.ts` | HTML stripping, per-itemtype field whitelists (API v1), markdown rendering |
 | `pagination.ts` | Range/limit defaults and ceiling, size budget constants, next-page notes |
 | `server-format.ts` | Installs payload formatting, pagination and the size budget on read tools; markdown goes in the text and in `structuredContent` |
@@ -22,8 +22,8 @@ both carried.
 ## Design note
 
 The three `install*` functions wrap `server.registerTool` once, right after the server is
-constructed, instead of editing 144 call sites. Every tool registered afterwards — present or
-future — is covered, and misclassification fails the test suite rather than leaking a write.
+constructed, instead of editing every call site. Every tool registered afterwards – present or
+future – is covered, and misclassification fails the test suite rather than leaking a write.
 They compose in any order.
 
 ## Transport guarantees
@@ -54,8 +54,8 @@ They compose in any order.
 
 ## Consuming it
 
-`@nextoolsolutions/mcp-glpi` declares it as `^1.3.1`. Inside the repo its lockfile links the
-sibling folder, so build here first — `tsx` does not transpile TypeScript inside
+`@nextoolsolutions/mcp-glpi` declares it as `^1.3.2`. Inside the repo its lockfile links the
+sibling folder, so build here first – `tsx` does not transpile TypeScript inside
 `node_modules`, the server loads the compiled `dist/`:
 
 ```bash

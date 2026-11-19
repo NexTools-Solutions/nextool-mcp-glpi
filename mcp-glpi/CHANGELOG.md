@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-11-18
+
+### Added
+- Library: the API v2 can use an access token supplied by the host instead of the OAuth2 password grant.
+  `instanceFromConfig({ v2: { url, accessTokenProvider, cacheKey } })` calls the provider when a token is needed,
+  keeps it until shortly before `expiresAt`, and asks again with `force: true` after GLPI answers 401. Caches are
+  keyed by `cacheKey`, so two users never share a token. The password grant is unchanged and still the default.
+
+### Fixed
+- `glpi_v2_get_me` works for profiles without the right to read users. With the default `api` scope,
+  `/Administration/User/Me` answers 403, and so does the user's own record for such profiles: the tool now
+  returns the identity the session gives (id, login, first and last name, `source: "session"`), always that of
+  the token's owner. Any other error is still raised.
+- No tool input schema contains a `$ref` any more. A zod schema used twice (ticket statuses, item IDs) became
+  `#/properties/<x>/anyOf/0`, which some MCP clients cannot resolve: they then skip the validation of those
+  tools' parameters. A contract test now forbids `$ref` in every tool.
+
 ## [3.5.7] - 2026-11-04
 
 ### Fixed

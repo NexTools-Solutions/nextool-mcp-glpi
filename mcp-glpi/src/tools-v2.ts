@@ -48,7 +48,8 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
   // ---------------------------------------------------------------------------
 
   const wrap = makeWrap(() =>
-    !config.baseUrl || !config.clientId || !config.clientSecret || !config.username || !config.password
+    !config.baseUrl
+    || (!config.accessTokenProvider && (!config.clientId || !config.clientSecret || !config.username || !config.password))
       ? "GLPI_V2_URL, GLPI_V2_CLIENT_ID, GLPI_V2_CLIENT_SECRET, GLPI_V2_USERNAME and GLPI_V2_PASSWORD are required."
       : null,
   );
@@ -71,7 +72,9 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
   const itilListSchema = listParamsSchema.extend({
     sort: z.string().optional().describe("Sort, e.g. date_mod:desc (default), date:desc, id:asc, priority:desc"),
   });
-  const statusEnum = z.enum(TICKET_STATUS_FILTERS);
+  // A new enum for each use: one instance used twice becomes a JSON Schema $ref
+  // (#/properties/status/anyOf/0) that some clients cannot resolve.
+  const statusEnum = () => z.enum(TICKET_STATUS_FILTERS);
 
   /**
    * Coded fields of the ITIL items: the v2 labels status ({id, name}) but sends
@@ -194,7 +197,7 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
         " Coded fields carry labels beside them (priority_name, urgency_name, impact_name, type_name) in the GLPI user's language.",
       inputSchema: itilListSchema.extend({
         status: z
-          .union([statusEnum, z.array(statusEnum)])
+          .union([statusEnum(), z.array(statusEnum())])
           .optional()
           .describe(
             "Only tickets in these statuses: new, assigned (= processing), planned, pending, solved, closed, " +

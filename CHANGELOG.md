@@ -5,6 +5,23 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-11-18
+
+### Added
+- Library: the API v2 can use an access token supplied by the host (`accessTokenProvider` + `cacheKey`) instead of
+  the OAuth2 password grant. The password grant is unchanged and still the default.
+
+### Fixed
+- `glpi_v2_get_me` works for profiles without the right to read users (falls back to the session identity).
+- No tool input schema contains a `$ref` any more; a contract test forbids it.
+
+## [3.5.7] - 2026-11-04
+
+### Fixed
+- `glpi_get_asset_details` description states when to use the tool, the required asset lookup, default and optional
+  sections (only `devices` and `disks` by default), the large-result limitation and read-only behavior.
+- The MCP server identity version now follows the package version.
+
 ## [3.5.6] - 2026-11-04
 
 ### Fixed

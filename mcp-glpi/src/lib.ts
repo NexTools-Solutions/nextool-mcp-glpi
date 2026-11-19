@@ -33,6 +33,7 @@ export type { LabelKind, LabelTable } from "./labels.js";
 export type { ToolsetDefinition } from "./toolsets.js";
 export { GlpiApiError } from "./glpi-client.js";
 export { GlpiV2ApiError } from "./glpi-v2-client.js";
+export type { AccessTokenProvider } from "./glpi-v2-client.js";
 export {
   GlpiHttpError,
   GlpiPolicyError,

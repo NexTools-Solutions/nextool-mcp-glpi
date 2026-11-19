@@ -154,11 +154,12 @@ Connect your GLPI once at *app.nextoolsolutions.com → My account → NexTool M
 - **Glama:** [`glama.json`](glama.json) names the maintainers; the [`Dockerfile`](Dockerfile) is the build they run.
 
 Pushing a tag `v<mcp-glpi version>` runs [`release.yml`](.github/workflows/release.yml): tests, npm (versions already
-published are skipped), then the MCP Registry. Repository secrets:
+published are skipped), then the MCP Registry. npm uses trusted publishing (OIDC, npm >= 11.5.1, no token): both
+packages list this repository + `release.yml` as a trusted publisher on npmjs.com, and no `NODE_AUTH_TOKEN` may be set
+(a token takes precedence over OIDC). Repository secrets:
 
 | Secret | What it is |
 |---|---|
-| `NPM_TOKEN` | npm granular automation token with publish rights on the `@nextoolsolutions` scope |
 | `MCP_PRIVATE_KEY` | Ed25519 private key (32-byte seed, hex) for the registry DNS login on `nextoolsolutions.com`; its public key is the `v=MCPv1; k=ed25519; p=…` TXT record on the domain apex |
 
 ## Development

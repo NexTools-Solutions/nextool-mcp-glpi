@@ -119,6 +119,16 @@ describe("parameters are described", () => {
   });
 });
 
+describe("schemas are self-contained", () => {
+  it("no input schema uses a $ref (some clients cannot resolve them)", async () => {
+    const client = await connect(BOTH);
+    const { tools } = await client.listTools();
+    await client.close();
+    const withRef = tools.filter((t) => JSON.stringify(t.inputSchema).includes('"$ref"')).map((t) => t.name);
+    assert.deepEqual(withRef, []);
+  });
+});
+
 describe("citations between tools", () => {
   it("every cited tool exists and sits in every preset of the citing tool", async () => {
     const client = await connect(BOTH);

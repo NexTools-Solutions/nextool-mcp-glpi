@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto";
 import { loadWritePolicy, type FetchImpl, type WritePolicy } from "@nextoolsolutions/mcp-glpi-core";
 import type { GlpiConfig } from "./glpi-client.js";
-import type { GlpiV2Config } from "./glpi-v2-client.js";
+import type { AccessTokenProvider, GlpiV2Config } from "./glpi-v2-client.js";
 import { parseToolsets } from "./toolsets.js";
 
 export type InstanceEnv = Record<string, string | undefined>;
@@ -90,14 +90,22 @@ export interface V1Credentials {
   appToken?: string;
 }
 
-/** API v2 credentials (GLPI 11, OAuth2 password grant). */
+/**
+ * API v2 credentials (GLPI 11): either the OAuth2 password grant (clientId,
+ * clientSecret, username, password) or a host-supplied access token
+ * (accessTokenProvider + cacheKey).
+ */
 export interface V2Credentials {
   /** GLPI URL, e.g. https://glpi.example.com (or …/api.php/v2.2) */
   url: string;
-  clientId: string;
-  clientSecret: string;
-  username: string;
-  password: string;
+  clientId?: string;
+  clientSecret?: string;
+  username?: string;
+  password?: string;
+  /** Supplies the access token instead of the password grant. Needs `cacheKey`. */
+  accessTokenProvider?: AccessTokenProvider;
+  /** Stable, non-secret identity the provider issues tokens for (cache key). */
+  cacheKey?: string;
   /** OAuth2 scope (default "api"). */
   scope?: string;
   /** API version path, e.g. "v2.2" (default "v2"). */
@@ -163,16 +171,28 @@ export function instanceFromConfig(opts: InstanceOptions): InstanceConfig {
         fetchImpl: opts.fetchImpl,
       }
     : { baseUrl: "", userToken: "", fetchImpl: opts.fetchImpl };
+  if (opts.v2) {
+    if (opts.v2.accessTokenProvider) {
+      if (typeof opts.v2.accessTokenProvider !== "function") {
+        throw new Error(`instance "${id}": v2.accessTokenProvider must be a function`);
+      }
+      if (!opts.v2.cacheKey) throw new Error(`instance "${id}": v2.accessTokenProvider requires v2.cacheKey`);
+    } else if (!opts.v2.clientId || !opts.v2.clientSecret || !opts.v2.username || !opts.v2.password) {
+      throw new Error(`instance "${id}": v2 needs clientId, clientSecret, username and password, or accessTokenProvider`);
+    }
+  }
   const v2: GlpiV2Config = opts.v2
     ? {
         baseUrl: httpUrl(id, "v2", opts.v2.url),
-        clientId: opts.v2.clientId,
-        clientSecret: opts.v2.clientSecret,
-        username: opts.v2.username,
-        password: opts.v2.password,
+        clientId: opts.v2.clientId ?? "",
+        clientSecret: opts.v2.clientSecret ?? "",
+        username: opts.v2.username ?? "",
+        password: opts.v2.password ?? "",
         scope: opts.v2.scope || "api",
         apiVersion: opts.v2.apiVersion || undefined,
         fetchImpl: opts.fetchImpl,
+        accessTokenProvider: opts.v2.accessTokenProvider,
+        cacheKey: opts.v2.cacheKey,
       }
     : { baseUrl: "", clientId: "", clientSecret: "", username: "", password: "", fetchImpl: opts.fetchImpl };
 

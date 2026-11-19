@@ -51,7 +51,27 @@ export type GlpiV2Config = {
    * Always called with `redirect: "manual"`; a 3xx becomes GlpiRedirectError.
    */
   fetchImpl?: FetchImpl;
+  /**
+   * Supplies the access token instead of the password grant: a host that already
+   * holds (or can mint) a token for the user sets this, with `cacheKey`. Then
+   * clientId, clientSecret, username and password are not used.
+   */
+  accessTokenProvider?: AccessTokenProvider;
+  /**
+   * Stable, non-secret identity of whoever the provider issues tokens for (e.g.
+   * "u12-main"). Required with `accessTokenProvider`: per-credential caches are
+   * keyed by it, so two users never share a token.
+   */
+  cacheKey?: string;
 };
+
+/**
+ * Returns an access token for the GLPI API v2. `force` is true right after GLPI
+ * answered 401 with the previous token: the provider must not return it again.
+ * `expiresAt` is a Unix time in milliseconds; without it the token is kept for
+ * a short while only.
+ */
+export type AccessTokenProvider = (opts: { force: boolean }) => Promise<{ token: string; expiresAt?: number }>;
 
 export class GlpiV2ApiError extends GlpiHttpError {
   constructor(message: string, status: number, method: string, path: string) {
@@ -71,7 +91,42 @@ export type ITILItemtype = "Ticket" | "Change" | "Problem";
 const accessTokens = new Map<string, { token: string; expiresAt: number }>();
 
 function tokenKey(config: GlpiV2Config): string {
+  if (config.accessTokenProvider) {
+    if (!config.cacheKey) throw new Error("GLPI v2: accessTokenProvider requires cacheKey");
+    return credentialKey("v2-provider", trimSlash(config.baseUrl), config.cacheKey);
+  }
   return credentialKey("v2", trimSlash(config.baseUrl), config.clientId, config.clientSecret, config.username, config.password, config.scope);
+}
+
+/** Lifetime of a provider token that came without `expiresAt`. */
+const PROVIDER_DEFAULT_TTL_MS = 5 * 60 * 1000;
+/** Keys whose token GLPI refused (401): the next provider call is forced. */
+const refusedTokens = new Set<string>();
+/** One provider call per credential at a time: parallel tool calls share it. */
+const providerCalls = new Map<string, Promise<string>>();
+
+async function tokenFromProvider(config: GlpiV2Config, key: string): Promise<string> {
+  const pending = providerCalls.get(key);
+  if (pending) return pending;
+  const call = (async () => {
+    const force = refusedTokens.has(key);
+    const issued = await config.accessTokenProvider!({ force });
+    if (!issued || typeof issued.token !== "string" || issued.token === "") {
+      throw new GlpiV2ApiError("OAuth2 token: the access token provider returned no token", 0, "POST", "/api.php/token");
+    }
+    refusedTokens.delete(key);
+    const expiresAt = typeof issued.expiresAt === "number" && Number.isFinite(issued.expiresAt)
+      ? issued.expiresAt - 60_000
+      : Date.now() + PROVIDER_DEFAULT_TTL_MS;
+    accessTokens.set(key, { token: issued.token, expiresAt: Math.max(expiresAt, Date.now() + 10_000) });
+    return issued.token;
+  })();
+  providerCalls.set(key, call);
+  try {
+    return await call;
+  } finally {
+    providerCalls.delete(key);
+  }
 }
 
 /** Cache key of a v2 credential (URL + client + user): per-credential caches outside this module use it. */
@@ -85,7 +140,9 @@ function validToken(config: GlpiV2Config): string | null {
 }
 
 function clearToken(config: GlpiV2Config): void {
-  accessTokens.delete(tokenKey(config));
+  const key = tokenKey(config);
+  accessTokens.delete(key);
+  if (config.accessTokenProvider) refusedTokens.add(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +170,8 @@ function getApiBase(config: GlpiV2Config): { base: string; prefix: string } {
 export async function getAccessToken(config: GlpiV2Config): Promise<string> {
   const valid = validToken(config);
   if (valid) return valid;
+
+  if (config.accessTokenProvider) return tokenFromProvider(config, tokenKey(config));
 
   const { base } = getApiBase(config);
   const url = `${base}/api.php/token`;
@@ -515,7 +574,9 @@ export function getUser(cfg: GlpiV2Config, userId: number | string) {
 /**
  * The connected user. GET /Administration/User/Me needs the OAuth "user" scope;
  * with the default "api" scope GLPI 11.0.7 answers 403 ERROR_RIGHT_MISSING, so
- * the user is then read through the session (user_id) instead.
+ * the user is then read through the session (user_id) instead. A profile without
+ * the right to read users gets 403 on its own record too: the identity is then the
+ * one the session gives (id, login, names), always that of the token's owner.
  */
 export async function getMe(cfg: GlpiV2Config): Promise<Record<string, unknown>> {
   try {
@@ -525,7 +586,21 @@ export async function getMe(cfg: GlpiV2Config): Promise<Record<string, unknown>>
     const session = await getSession(cfg);
     const userId = Number(session?.user_id);
     if (!Number.isInteger(userId) || userId <= 0) throw e;
-    const user = await glpiV2Request<unknown>(cfg, "GET", `/Administration/User/${userId}`);
+    let user: unknown;
+    try {
+      user = await glpiV2Request<unknown>(cfg, "GET", `/Administration/User/${userId}`);
+    } catch (e2) {
+      if (!(e2 instanceof GlpiV2ApiError) || e2.status !== 403) throw e2;
+      const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      return {
+        id: userId,
+        username: text(session.name),
+        firstname: text(session.first_name),
+        realname: text(session.real_name),
+        friendly_name: text(session.friendly_name),
+        source: "session",
+      };
+    }
     const item = Array.isArray(user) ? user[0] : user;
     return { ...(typeof item === "object" && item !== null ? (item as Record<string, unknown>) : { id: userId }), source: "session" };
   }
