@@ -481,8 +481,7 @@ export function addFollowup(
   data: Record<string, unknown>,
 ) {
   return glpiV2Request<unknown>(
-    cfg, "POST", `/Assistance/${itemtype}/${id(itemId)}/Timeline`,
-    { ...data, type: "ITILFollowup" },
+    cfg, "POST", `/Assistance/${itemtype}/${id(itemId)}/Timeline/Followup`, data,
   );
 }
 
@@ -491,8 +490,7 @@ export function addSolution(
   data: Record<string, unknown>,
 ) {
   return glpiV2Request<unknown>(
-    cfg, "POST", `/Assistance/${itemtype}/${id(itemId)}/Timeline`,
-    { ...data, type: "ITILSolution" },
+    cfg, "POST", `/Assistance/${itemtype}/${id(itemId)}/Timeline/Solution`, data,
   );
 }
 

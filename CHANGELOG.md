@@ -5,6 +5,13 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.6.1] - 2026-11-21
+
+### Fixed
+- `glpi_v2_add_followup` and `glpi_v2_add_solution` failed with 404 on GLPI 11: they posted to
+  `/{itemtype}/{id}/Timeline` with a `type` field, and GLPI only creates these items at
+  `/Timeline/Followup` and `/Timeline/Solution`. Both tools now use those routes (and no longer send `type`).
+
 ## [3.6.0] - 2026-11-18
 
 ### Added
