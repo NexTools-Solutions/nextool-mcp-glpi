@@ -6,6 +6,11 @@
  * collection, which the tool returned as if it were the item. An ID is now a
  * positive integer — a number, or a string made only of digits — and anything
  * else is rejected by input validation before any request is made.
+ *
+ * Assistants write IDs the way people do: "#123", " 123 ", "123.0". Those are
+ * unambiguous, so they are normalised before validation instead of refused
+ * (3.8.0). What still fails gets one message that says what an ID looks like
+ * and where to find it, instead of zod's "Invalid input".
  */
 
 import { z } from "zod";
@@ -15,10 +20,21 @@ export interface ItemIdOptions {
   allowZero?: boolean;
 }
 
+/** "#123", " 123 ", "0123" and "123.0" become "123"; anything else is returned untouched. */
+export function normalizeItemId(value: unknown): unknown {
+  if (typeof value === "string") {
+    const m = /^\s*#?\s*0*(\d+)(?:\.0+)?\s*$/.exec(value);
+    return m ? m[1] : value;
+  }
+  return value;
+}
+
 export function itemIdSchema(description = "Item ID", opts: ItemIdOptions = {}) {
-  const number = opts.allowZero ? z.number().int().nonnegative() : z.number().int().positive();
-  const digits = z
-    .string()
-    .regex(opts.allowZero ? /^\d+$/ : /^0*[1-9]\d*$/, opts.allowZero ? "must be a non-negative integer ID" : "must be a positive integer ID");
-  return z.union([number, digits]).describe(description);
+  const expected = opts.allowZero ? "a non-negative integer ID" : "a positive integer ID";
+  const message =
+    `must be ${expected}: the numeric GLPI ID alone, e.g. 123 (not a name, a title or a URL). ` +
+    "When the ID is unknown, find it first with a list or search tool.";
+  const number = opts.allowZero ? z.number().int(message).nonnegative(message) : z.number().int(message).positive(message);
+  const digits = z.string().regex(opts.allowZero ? /^\d+$/ : /^0*[1-9]\d*$/, message);
+  return z.preprocess(normalizeItemId, z.union([number, digits], { errorMap: () => ({ message }) })).describe(description);
 }

@@ -5,6 +5,43 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-22
+
+### Added
+- `v1Compat` now covers **every v1 tool of the `core` preset** (59 names; 3.7.0 had 13), so a client that froze the
+  v1 tool list finds each name it knows on a v2-only connection:
+  - changes and problems (`glpi_list_changes`, `glpi_get_change`, `glpi_list_change_followups`,
+    `glpi_list_change_tasks` and the problem counterparts);
+  - approvals and people of a ticket (`glpi_list_ticket_validations`, `glpi_create_ticket_validation`,
+    `glpi_list_ticket_groups`, `glpi_add_ticket_user`, `glpi_add_ticket_group`);
+  - catalogue reads (`glpi_list_users`, `glpi_get_user`, `glpi_list_groups`, `glpi_get_group`, `glpi_list_entities`,
+    `glpi_get_entity`, `glpi_list_itil_categories`, `glpi_get_itil_category`, `glpi_list_locations`,
+    `glpi_get_location`, `glpi_list_documents`, `glpi_get_document`, the four knowledge base reads), returning the
+    v2 item as it is;
+  - `glpi_get_my_profiles` and `glpi_get_my_entities`, from the v2 session;
+  - `glpi_get_ticket_stats` and `glpi_count_items`, read from the `Content-Range` total GLPI sends with a one-row
+    page (deleted items left out; search criteria are refused with a sentence naming the alternatives).
+- v1 tools that the v2 API cannot serve (generic search and its options, assets, reservations, document links,
+  followup templates, `glpi_update_ticket_validation`, `glpi_search_user_by_email`) are registered under `v1Compat`
+  too and answer with one sentence that says so and names the closest tool, instead of "tool not found".
+- `v1CompatToolNames()` (library): the names `v1Compat` registers, for a host that wants to leave them out of
+  `tools/list`.
+
+### Changed
+- `v1Compat`: `glpi_create_ticket` and `glpi_update_ticket` now set the people of a v1 input (`_users_id_requester`,
+  `_users_id_assign`, `_users_id_observer` and the `_groups_id_*` keys, one ID or a list) through the team endpoint;
+  a create that names no requester makes the connected user the requester, as the v1 API does (the v2 API leaves
+  the ticket without one). People GLPI refused are listed in `actors_not_set` (3.7.0 dropped them all as
+  `ignored_fields`).
+- `v1Compat`: timeline rows keep their entry type for solutions (the solution's own `type` moved to
+  `solution_type`) and always carry a `date`; the scan warning of `glpi_list_my_tickets` is `scan_note`.
+
+### Fixed
+- Item IDs written the way people write them are accepted in every tool: `"#123"`, `" 123 "`, `"0123"` and
+  `"123.0"` are read as 123 instead of failing input validation. An ID that is still wrong (a name, 0, a decimal)
+  now gets one message that says what an ID is and where to find it, instead of "Invalid input"
+  (NexTools-Solutions/nextool-mcp#2).
+
 ## [3.7.0] - 2026-11-22
 
 ### Added

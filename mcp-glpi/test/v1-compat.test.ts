@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { FetchImpl } from "@nextoolsolutions/mcp-glpi-core";
 
-import { createGlpiServer, instanceFromConfig } from "../src/lib.js";
+import { createGlpiServer, instanceFromConfig, v1CompatToolNames } from "../src/lib.js";
 
 let seq = 0;
 const json = (body: unknown, status = 200) =>
@@ -35,7 +35,24 @@ function glpi() {
     const method = init?.method ?? "GET";
     calls.push({ method, path: u.pathname, query: u.search, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (/\/session$/i.test(u.pathname)) return json({ user_id: 124, name: "demo.rafael.souza", friendly_name: "Rafael Souza" });
-    if (u.pathname.endsWith("/Assistance/Ticket") && method === "GET") return json(TICKETS);
+    if (u.pathname.endsWith("/Assistance/Ticket") && method === "GET") {
+      // Counts: a one-row page whose Content-Range carries the total of the filter.
+      if (u.searchParams.get("limit") === "1") {
+        const filter = u.searchParams.get("filter") ?? "";
+        const total = /status\.id==2/.test(filter) ? 2 : /status\.id==1/.test(filter) ? 1 : /status\.id=out=/.test(filter) ? 1 : /status\.id==/.test(filter) ? 0 : 4;
+        return new Response(JSON.stringify(TICKETS.slice(0, 1)), {
+          status: 206,
+          headers: { "Content-Type": "application/json", "Content-Range": `0-0/${total}` },
+        });
+      }
+      return json(TICKETS);
+    }
+    if (u.pathname.endsWith("/Assistance/Ticket") && method === "POST") return json({ id: 77, href: "/Assistance/Ticket/77" }, 201);
+    if (/\/Assistance\/Ticket\/77\/TeamMember$/.test(u.pathname) && method === "POST") {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      return body.type === "Group" ? json({ status: "ERROR_RIGHT_MISSING", title: "no" }, 403) : new Response("", { status: 201 });
+    }
+    if (/\/Assistance\/Ticket\/1$/.test(u.pathname) && method === "GET") return json(TICKETS[0]);
     if (/\/Timeline\/Solution$/.test(u.pathname) && method === "POST") return json({ id: 50 }, 201);
     if (/\/Assistance\/Ticket\/1\/Timeline$/.test(u.pathname)) {
       return json([
@@ -48,13 +65,16 @@ function glpi() {
   return { fetchImpl, calls };
 }
 
-async function connect(opts: { v1Compat?: boolean; withV1?: boolean }, fetchImpl: FetchImpl) {
+async function connect(opts: { v1Compat?: boolean; withV1?: boolean; onlyV1?: boolean; toolsets?: string[] }, fetchImpl: FetchImpl) {
   const n = ++seq;
   const instance = instanceFromConfig({
     id: `compat-${process.pid}-${n}`,
-    v2: { url: "https://glpi.example.com", accessTokenProvider: async () => ({ token: "tok" }), cacheKey: `compat-${n}` },
-    ...(opts.withV1 ? { v1: { url: "https://glpi.example.com", userToken: "u" } } : {}),
+    ...(opts.onlyV1
+      ? {}
+      : { v2: { url: "https://glpi.example.com", accessTokenProvider: async () => ({ token: "tok" }), cacheKey: `compat-${n}` } }),
+    ...(opts.withV1 || opts.onlyV1 ? { v1: { url: "https://glpi.example.com", userToken: "u" } } : {}),
     v1Compat: opts.v1Compat,
+    toolsets: opts.toolsets,
   });
   const { server } = createGlpiServer(instance, { fetchImpl });
   const [a, b] = InMemoryTransport.createLinkedPair();
@@ -121,6 +141,87 @@ describe("v1Compat", () => {
     const client = await connect({ v1Compat: true }, glpi().fetchImpl);
     const res = (await client.callTool({ name: "glpi_list_followups", arguments: { ticketId: 1 } })) as { structuredContent: { data: Record<string, unknown>[] } };
     assert.deepEqual(res.structuredContent.data.map((e) => [e.id, e.user_name]), [[10, "demo.rafael.souza"]]);
+    await client.close();
+  });
+
+  it("covers every v1 tool of the core preset, and nothing registered collides with glpi_v2_*", async () => {
+    const compat = await connect({ v1Compat: true, toolsets: ["core"] }, glpi().fetchImpl);
+    const names = (await compat.listTools()).tools.map((t) => t.name);
+    await compat.close();
+    const v1 = await connect({ onlyV1: true, toolsets: ["core"] }, glpi().fetchImpl);
+    const core = (await v1.listTools()).tools.map((t) => t.name);
+    await v1.close();
+    assert.ok(core.length > 50);
+    assert.deepEqual(core.filter((n) => !names.includes(n)), []);
+    assert.equal(new Set(names).size, names.length);
+    for (const n of v1CompatToolNames()) assert.ok(!n.startsWith("glpi_v2_"), n);
+  });
+
+  it("a v1 tool with no v2 counterpart answers with an actionable sentence, not 'tool not found'", async () => {
+    const client = await connect({ v1Compat: true }, glpi().fetchImpl);
+    const res = (await client.callTool({ name: "glpi_search", arguments: { itemtype: "Ticket", criteria: [] } })) as {
+      isError?: boolean; content: { text: string }[];
+    };
+    assert.equal(res.isError, true);
+    assert.match(res.content[0].text, /API v2/);
+    assert.match(res.content[0].text, /glpi_list_tickets/);
+    await client.close();
+  });
+
+  it("glpi_get_ticket_stats and glpi_count_items read the totals from Content-Range, deleted items left out", async () => {
+    const g = glpi();
+    const client = await connect({ v1Compat: true }, g.fetchImpl);
+    const stats = (await client.callTool({ name: "glpi_get_ticket_stats", arguments: {} })) as { structuredContent: { data: Record<string, unknown> } };
+    const data = stats.structuredContent.data as { total: number; by_status: { code: number; count: number }[]; other_status_count: number; counts_consistent: boolean };
+    assert.equal(data.total, 4);
+    assert.deepEqual(data.by_status.filter((r) => r.count > 0).map((r) => [r.code, r.count]), [[1, 1], [2, 2]]);
+    assert.equal(data.other_status_count, 1);
+    assert.equal(data.counts_consistent, true);
+    for (const c of g.calls.filter((c) => c.path.endsWith("/Assistance/Ticket"))) assert.match(decodeURIComponent(c.query), /is_deleted==false/);
+
+    const count = (await client.callTool({ name: "glpi_count_items", arguments: { itemtype: "Ticket" } })) as { structuredContent: { data: unknown } };
+    assert.deepEqual(count.structuredContent.data, { itemtype: "Ticket", total: 4 });
+    const withCriteria = (await client.callTool({
+      name: "glpi_count_items", arguments: { itemtype: "Ticket", criteria: [{ field: 12, searchtype: "equals", value: 1 }] },
+    })) as { isError?: boolean; content: { text: string }[] };
+    assert.equal(withCriteria.isError, true);
+    assert.match(withCriteria.content[0].text, /glpi_get_ticket_stats/);
+    await client.close();
+  });
+
+  it("glpi_create_ticket maps v1 field names, sets people through the team and reports the ones GLPI refused", async () => {
+    const g = glpi();
+    const client = await connect({ v1Compat: true }, g.fetchImpl);
+    const res = (await client.callTool({
+      name: "glpi_create_ticket",
+      arguments: { input: { name: "Novo", itilcategories_id: 5, _users_id_observer: 9, _groups_id_assign: [3] } },
+    })) as { structuredContent: { data: { id: number; actors_not_set?: { field: string; id: number }[] } } };
+    const posts = g.calls.filter((c) => c.method === "POST");
+    assert.deepEqual(posts[0].body, { name: "Novo", category: 5 });
+    assert.deepEqual(posts.slice(1).map((c) => c.body), [
+      { type: "User", id: 124, role: "requester" }, // nobody was named: the connected user
+      { type: "User", id: 9, role: "observer" },
+      { type: "Group", id: 3, role: "assigned" },
+    ]);
+    assert.equal(res.structuredContent.data.id, 77);
+    assert.deepEqual(res.structuredContent.data.actors_not_set?.map((a) => [a.field, a.id]), [["_groups_id_assign", 3]]);
+    await client.close();
+  });
+
+  it("IDs written the way people write them are accepted; a wrong one says what an ID is", async () => {
+    const g = glpi();
+    const client = await connect({ v1Compat: true }, g.fetchImpl);
+    for (const ticketId of ["#1", " 1 ", "1.0", "01"]) {
+      const res = (await client.callTool({ name: "glpi_get_ticket", arguments: { ticketId } })) as { isError?: boolean };
+      assert.equal(res.isError, undefined, JSON.stringify(ticketId));
+    }
+    for (const ticketId of ["abc", "Ticket 1", 0, -1, 1.5]) {
+      const res = (await client.callTool({ name: "glpi_get_ticket", arguments: { ticketId } }).catch((e: Error) => ({
+        isError: true, content: [{ text: e.message }],
+      }))) as { isError?: boolean; content: { text: string }[] };
+      assert.equal(res.isError, true, JSON.stringify(ticketId));
+      assert.match(res.content[0].text, /numeric GLPI ID alone, e\.g\. 123/, JSON.stringify(ticketId));
+    }
     await client.close();
   });
 });

@@ -19,6 +19,7 @@
 export { createGlpiServer, DEFAULT_INSTRUCTIONS, SERVER_VERSION } from "./create-server.js";
 export type { CreateServerOptions, CreatedServer } from "./create-server.js";
 export { instanceFromConfig, instanceFromEnv } from "./instance.js";
+export { v1CompatToolNames } from "./tools-v1-compat.js";
 export type {
   InstanceConfig,
   InstanceEnv,

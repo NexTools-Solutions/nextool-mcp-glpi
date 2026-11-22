@@ -712,6 +712,10 @@ export function listLocations(
   );
 }
 
+export function getLocation(cfg: GlpiV2Config, locationId: number | string) {
+  return glpiV2Request<Record<string, unknown>>(cfg, "GET", `/Dropdowns/Location/${id(locationId)}`);
+}
+
 export function listRequestTypes(
   cfg: GlpiV2Config,
   p?: { filter?: string; start?: number; limit?: number; sort?: string },
@@ -818,4 +822,29 @@ export async function healthCheck(cfg: GlpiV2Config): Promise<Record<string, unk
       note: "GET /status needs the OAuth 'status' scope; the API answered on /session instead.",
     };
   }
+}
+
+// ===========================================================================
+// Totals — Content-Range of a one-row page
+// ===========================================================================
+
+/**
+ * Number of items of a collection (optionally narrowed by an RSQL filter),
+ * without transferring them: GLPI answers a paged GET with
+ * `Content-Range: <from>-<to>/<total>`. One row is requested and the total is
+ * read from that header. Undefined when GLPI sent no usable header.
+ */
+export async function countCollection(cfg: GlpiV2Config, path: string, filter?: string): Promise<number | undefined> {
+  let range: string | null = null;
+  const inner: FetchImpl = cfg.fetchImpl ?? ((u, i) => globalThis.fetch(u, i));
+  const capturing: FetchImpl = async (url, init) => {
+    const res = await inner(url, init);
+    range = res.headers?.get?.("content-range") ?? null;
+    return res;
+  };
+  const rows = await glpiV2Request<unknown>({ ...cfg, fetchImpl: capturing }, "GET", withQs(path, { filter, limit: 1 }));
+  const m = /\/(\d+)\s*$/.exec(range ?? "");
+  if (m) return Number(m[1]);
+  // No header: an empty page is a certain zero, anything else is unknown.
+  return Array.isArray(rows) && rows.length === 0 ? 0 : undefined;
 }

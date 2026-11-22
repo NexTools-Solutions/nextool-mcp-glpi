@@ -27,8 +27,9 @@ import { installToolFilter, isToolSelected, parseGlobList, type ToolFilterOption
 import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
+import { v1CompatToolNames } from "./tools-v1-compat.js";
 
-export const SERVER_VERSION = "3.7.0";
+export const SERVER_VERSION = "3.8.0";
 
 export interface CreatedServer {
   server: McpServer;
@@ -97,6 +98,14 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
   const instructions =
     opts.instructions ?? buildInstructions(selected, { v1: instance.enableV1, v2: instance.enableV2 });
 
+  // v1 names served by the v2 API (v1Compat): their rows are built by the compat layer, so the v1 field
+  // whitelists must not run on them, and the catalogue listings read with the v2 tables.
+  const v1Compat = Boolean(instance.v1Compat) && instance.enableV2 && !instance.enableV1;
+  const compatItemtypes = v1Compat ? Object.fromEntries(v1CompatToolNames().map((name) => [name, ""])) : undefined;
+  const markdownViews = v1Compat
+    ? { ...MARKDOWN_VIEWS, glpi_list_users: MARKDOWN_VIEWS.glpi_v2_list_users, glpi_list_knowbase_items: MARKDOWN_VIEWS.glpi_v2_list_kb_articles }
+    : MARKDOWN_VIEWS;
+
   const server = new McpServer(
     {
     name: "mcp-glpi",
@@ -138,7 +147,8 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
     // whitelist of the itemtype they happen to take as an argument.
     skipFormatting: ["glpi_count_items", "glpi_get_ticket_stats", "glpi_list_search_options"],
     // Compact tables for listings in markdown (the JSON result keeps every field).
-    markdownViews: MARKDOWN_VIEWS,
+    markdownViews,
+    ...(compatItemtypes ? { itemtypes: compatItemtypes } : {}),
     // Keys this layer adds to the result, declared so validating clients accept it.
     outputExtras: {
       count: z.number().int().optional().describe("Items in this page"),
@@ -160,7 +170,7 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
   const filter = installToolFilter(server, filterOptions);
 
   if (instance.enableV1) registerV1Tools(server, v1);
-  if (instance.enableV2) registerV2Tools(server, v2, { v1Compat: Boolean(instance.v1Compat) && !instance.enableV1 });
+  if (instance.enableV2) registerV2Tools(server, v2, { v1Compat });
 
   // Catalogues an agent needs before composing a ticket (entities, categories,
   // request types) plus the numeric code maps, which the API cannot return.
