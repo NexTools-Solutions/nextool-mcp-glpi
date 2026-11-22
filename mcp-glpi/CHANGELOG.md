@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [3.8.1] - 2026-11-22
+
+### Fixed
+- With deletes disabled (the default), an update that sets `is_deleted` (which moves the item to the GLPI trash) is
+  blocked like a delete, in the v1, v2 and v1Compat tools (core 1.3.3). Before, "apaga o chamado" in the ChatGPT app
+  became `glpi_update_ticket` with `is_deleted: 1` and the server let it through.
+
 ## [3.8.0] - 2026-11-22
 
 ### Added

@@ -124,6 +124,25 @@ export function titleFromToolName(toolName: string): string {
 // Enforcement
 // ---------------------------------------------------------------------------
 
+/** True for the values GLPI reads as "on" in a flag field. */
+function isOn(value: unknown): boolean {
+  if (value === true || value === 1) return true;
+  return typeof value === "string" && /^(1|true)$/i.test(value.trim());
+}
+
+/**
+ * True when the arguments of a write ask GLPI to put an item in the trash: `is_deleted` set to an "on" value at
+ * the top level or nested in `input`/`data` objects and lists (both APIs accept it on an update, so an update is
+ * a delete in disguise). Restoring (`is_deleted: 0`) is not a delete.
+ */
+export function trashesItem(args: unknown, depth = 0): boolean {
+  if (depth > 4 || args === null || typeof args !== "object") return false;
+  if (Array.isArray(args)) return args.some((a) => trashesItem(a, depth + 1));
+  return Object.entries(args as Record<string, unknown>).some(
+    ([k, v]) => (k === "is_deleted" ? isOn(v) : trashesItem(v, depth + 1)),
+  );
+}
+
 /**
  * Returns an error message when the policy blocks the call, or null when it may
  * proceed. Runs before any request reaches GLPI.
@@ -140,6 +159,14 @@ export function checkOperation(
     return (
       `Blocked: this GLPI instance is configured read-only (GLPI_READ_ONLY=true), ` +
       `so ${toolName} cannot run. Nothing was sent to GLPI.`
+    );
+  }
+
+  if (kind === "write" && !policy.allowDelete && trashesItem(args)) {
+    return (
+      `Blocked: ${toolName} was asked to set is_deleted, which moves the item to the GLPI trash. ` +
+      `That is a delete, and deletes are disabled on this instance (GLPI_ALLOW_DELETE=true enables them). ` +
+      `Nothing was sent to GLPI.`
     );
   }
 

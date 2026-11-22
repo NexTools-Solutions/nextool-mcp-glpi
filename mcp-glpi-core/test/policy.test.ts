@@ -121,6 +121,18 @@ describe("checkOperation", () => {
     );
   });
 
+  it("treats is_deleted on an update as a delete", () => {
+    const upd = (args: Record<string, unknown>, pol = DEFAULT) => checkOperation(pol, "write", "glpi_update_ticket", args);
+    assert.match(String(upd({ ticketId: 1, input: { is_deleted: 1 } })), /trash/);
+    assert.match(String(upd({ ticketId: 1, input: { is_deleted: true } })), /Nothing was sent to GLPI/);
+    assert.match(String(upd({ id: 1, data: { is_deleted: "1" } })), /GLPI_ALLOW_DELETE/);
+    assert.match(String(upd({ input: [{ id: 1, is_deleted: "true" }] })), /trash/);
+    assert.match(String(upd({ is_deleted: 1 })), /trash/);
+    assert.equal(upd({ ticketId: 1, input: { is_deleted: 0, status: 2 } }), null);
+    assert.equal(upd({ ticketId: 1, input: { status: 5 } }), null);
+    assert.equal(upd({ ticketId: 1, input: { is_deleted: 1 } }, OPEN), null);
+  });
+
   it("skips the reason check when disabled", () => {
     const noReason = { ...OPEN, requireDeleteReason: false };
     assert.equal(checkOperation(noReason, "destructive", "glpi_delete_entity", {}), null);

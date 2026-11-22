@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-11-22
+
+### Fixed
+- **An update that sets `is_deleted` is now treated as a delete.** Both GLPI APIs accept `is_deleted` on an update
+  and move the item to the trash, so with deletes disabled (the default) an assistant could still trash a ticket
+  through `glpi_update_ticket` (seen with the ChatGPT app: `{"input": {"is_deleted": 1}}`). `checkOperation` now
+  blocks any write whose arguments set `is_deleted` to an "on" value (1, true, "1", "true", top level or nested in
+  `input`/`data` objects and lists) unless `allowDelete` is on. Restoring (`is_deleted: 0`) still passes.
+
+### Added
+- `trashesItem(args)`: the check above, exported for hosts that run their own guard.
+
 ## [1.3.2] - 2026-10-05
 
 ### Fixed

@@ -29,7 +29,7 @@ import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 import { v1CompatToolNames } from "./tools-v1-compat.js";
 
-export const SERVER_VERSION = "3.8.0";
+export const SERVER_VERSION = "3.8.1";
 
 export interface CreatedServer {
   server: McpServer;
