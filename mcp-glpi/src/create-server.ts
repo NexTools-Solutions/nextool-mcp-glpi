@@ -28,7 +28,7 @@ import { toolsetMatcher } from "./toolsets.js";
 import { registerV1Tools } from "./tools-v1.js";
 import { registerV2Tools } from "./tools-v2.js";
 
-export const SERVER_VERSION = "3.6.1";
+export const SERVER_VERSION = "3.7.0";
 
 export interface CreatedServer {
   server: McpServer;
@@ -160,7 +160,7 @@ export function createGlpiServer(instance: InstanceConfig, opts: CreateServerOpt
   const filter = installToolFilter(server, filterOptions);
 
   if (instance.enableV1) registerV1Tools(server, v1);
-  if (instance.enableV2) registerV2Tools(server, v2);
+  if (instance.enableV2) registerV2Tools(server, v2, { v1Compat: Boolean(instance.v1Compat) && !instance.enableV1 });
 
   // Catalogues an agent needs before composing a ticket (entities, categories,
   // request types) plus the numeric code maps, which the API cannot return.

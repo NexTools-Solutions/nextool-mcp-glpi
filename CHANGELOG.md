@@ -5,6 +5,19 @@ Releases are tagged `v<mcp-glpi version>`. Details per package:
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-11-22
+
+### Added
+- `v1Compat` (library option of `instanceFromConfig`): an instance with only API v2 credentials also serves the
+  everyday ticket tools under their **v1 names and v1 input schemas**, running on the v2 API:
+  `glpi_list_my_tickets`, `glpi_list_tickets`, `glpi_get_ticket`, `glpi_create_ticket`, `glpi_update_ticket`,
+  `glpi_add_followup`, `glpi_list_followups`, `glpi_add_solution`, `glpi_list_ticket_tasks`, `glpi_add_ticket_task`,
+  `glpi_list_timeline`, `glpi_list_ticket_users` and `glpi_get_full_session`. For clients that froze a v1 tool list
+  (the ChatGPT app directory) talking to a v2-only connection. "My tickets" reads the team of each ticket, since the
+  v2 API cannot filter on it (up to 1,000 tickets in the chosen statuses); requester/technician fields of a v1 create
+  are reported as `ignored_fields` (the team endpoint needs rights a technician usually lacks). Off by default, and
+  ignored when the instance also has v1 credentials.
+
 ## [3.6.1] - 2026-11-21
 
 ### Fixed

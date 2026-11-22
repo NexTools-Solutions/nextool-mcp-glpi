@@ -8,6 +8,7 @@ import type { GlpiV2Config, ITILItemtype } from "./glpi-v2-client.js";
 import { itemIdSchema } from "./ids.js";
 import { TICKET_STATUS_FILTERS, normalizeStatuses, statusCodes } from "./ticket-lists.js";
 import { statusKind, v2Labels, withV2Labels, type LabelKind } from "./labels.js";
+import { registerV1CompatTools } from "./tools-v1-compat.js";
 import {
   // Entity
   listEntities, getEntity, createEntity, updateEntity, deleteEntity,
@@ -42,7 +43,12 @@ import {
  * Registered on a server whose write policy, payload formatting and create
  * idempotency are already installed (see index.ts).
  */
-export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
+export interface RegisterV2Options {
+  /** Also serve the everyday ticket tools under their v1 names (see tools-v1-compat.ts). */
+  v1Compat?: boolean;
+}
+
+export function registerV2Tools(server: McpServer, config: GlpiV2Config, opts: RegisterV2Options = {}): void {
   // ---------------------------------------------------------------------------
   // Result helpers (shared — see @nextoolsolutions/mcp-glpi-core)
   // ---------------------------------------------------------------------------
@@ -931,4 +937,6 @@ export function registerV2Tools(server: McpServer, config: GlpiV2Config): void {
       return jsonResult({ status: "ok", ...result });
     }),
   );
+
+  if (opts.v1Compat) registerV1CompatTools(server, config, { wrap, labelItil, withStatusFilter });
 }

@@ -27,6 +27,11 @@ export interface InstanceConfig {
   enableV1: boolean;
   enableV2: boolean;
   policy: WritePolicy;
+  /**
+   * Serve the everyday ticket tools under their v1 names on the v2 API too (tools-v1-compat.ts). Only when the
+   * instance has v2 and no v1: for clients that froze a v1 tool list (the ChatGPT app directory).
+   */
+  v1Compat?: boolean;
   /** Named presets (see toolsets.ts); validated. Empty/absent = no preset. */
   toolsets?: string[];
   /** Comma-separated globs (GLPI_TOOLS_INCLUDE syntax). */
@@ -129,6 +134,8 @@ export interface InstanceOptions {
   toolsExclude?: string | readonly string[];
   /** fetch for every GLPI request (the hosted service injects an IP-validating one). */
   fetchImpl?: FetchImpl;
+  /** With v2 only: also serve glpi_list_my_tickets, glpi_add_solution… on the v2 API (tools-v1-compat.ts). */
+  v1Compat?: boolean;
 }
 
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -197,6 +204,7 @@ export function instanceFromConfig(opts: InstanceOptions): InstanceConfig {
     : { baseUrl: "", clientId: "", clientSecret: "", username: "", password: "", fetchImpl: opts.fetchImpl };
 
   return {
+    v1Compat: Boolean(opts.v1Compat) && Boolean(opts.v2) && !opts.v1,
     id,
     v1,
     v2,
